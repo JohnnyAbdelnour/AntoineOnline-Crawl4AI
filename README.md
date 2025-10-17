@@ -37,11 +37,15 @@ CREATE TABLE "products" (
 2.  Install the dependencies: `pip install -r requirements.txt`
 3.  Create a `.env` file by copying the `.env.example` file: `cp .env.example .env`
 4.  Fill in the required values in the `.env` file, including your OpenAI API key for LLM-based extraction.
-5.  Run the `discover` mode to find all product URLs:
+5.  **Configure the `PRODUCT_URL_PATTERN`**:
+    -   Before running the crawler, you need to determine the URL pattern for product pages on your target website.
+    -   For example, if your product pages have URLs like `https://example.com/products/my-product-name`, your pattern would be `/products/`.
+    -   Set this value for the `PRODUCT_URL_PATTERN` variable in your `.env` file.
+6.  Run the `discover` mode to find all product URLs:
     ```bash
     python ecommerce_crawler.py discover
     ```
-6.  Once the discovery is complete, run the `extract` mode to extract the product data:
+7.  Once the discovery is complete, run the `extract` mode to extract the product data:
     ```bash
     python ecommerce_crawler.py extract
     ```

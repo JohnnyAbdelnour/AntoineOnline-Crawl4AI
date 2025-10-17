@@ -26,6 +26,7 @@ def get_supabase_client():
 ECOMMERCE_TARGET_URL = os.environ.get("ECOMMERCE_TARGET_URL")
 PRODUCTS_TABLE_NAME = os.environ.get("PRODUCTS_TABLE_NAME", "products")
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
+PRODUCT_URL_PATTERN = os.environ.get("PRODUCT_URL_PATTERN", "/product/")
 URLS_FILE = "product_urls.txt"
 
 __location__ = os.path.dirname(os.path.abspath(__file__))
@@ -68,19 +69,11 @@ async def discover_product_urls():
         extra_args=["--disable-gpu", "--disable-dev-shm-usage", "--no-sandbox"],
     )
 
-    # URL filtering to focus on product and category pages
-    filter_chain = FilterChain([
-        URLPatternFilter(
-            patterns=["*/product/*", "*/category/*"],
-        )
-    ])
-
     # Deep crawling strategy
     deep_crawl_strategy = BFSDeepCrawlStrategy(
         max_depth=10,  # Limit depth to 10 to avoid infinite loops, but still get deep enough
         max_pages=1100000,
         include_external=False,
-        filter_chain=filter_chain,
     )
 
     crawl_config = CrawlerRunConfig(
@@ -98,7 +91,7 @@ async def discover_product_urls():
         log_memory(prefix="Before crawl: ")
 
         async for result in await crawler.arun(url=ECOMMERCE_TARGET_URL, config=crawl_config):
-            if result.success and "/product/" in result.url:
+            if result.success and PRODUCT_URL_PATTERN in result.url:
                 product_urls.add(result.url)
 
         print(f"\nFound {len(product_urls)} unique product URLs.")
