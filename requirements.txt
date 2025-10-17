@@ -3,4 +3,3 @@ psutil
 requests
 crawl4ai
 python-dotenv
-psutil

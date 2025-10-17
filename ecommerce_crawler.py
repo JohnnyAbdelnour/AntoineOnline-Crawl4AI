@@ -2,8 +2,11 @@ import os
 import sys
 import psutil
 import asyncio
+import json
 from supabase import create_client, Client
 from dotenv import load_dotenv
+from pydantic import BaseModel, Field
+from typing import Optional, List
 
 load_dotenv()
 
@@ -20,7 +23,8 @@ def get_supabase_client():
 
 # E-commerce target URL
 ECOMMERCE_TARGET_URL = os.environ.get("ECOMMERCE_TARGET_URL")
-SUPABASE_TABLE_NAME = os.environ.get("SUPABASE_TABLE_NAME", "Data")
+PRODUCTS_TABLE_NAME = os.environ.get("PRODUCTS_TABLE_NAME", "products")
+OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
 
 __location__ = os.path.dirname(os.path.abspath(__file__))
 __output__ = os.path.join(__location__, "output")
@@ -29,12 +33,20 @@ __output__ = os.path.join(__location__, "output")
 parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(parent_dir)
 
-from crawl4ai import AsyncWebCrawler, BrowserConfig, CrawlerRunConfig, CacheMode
+from crawl4ai import AsyncWebCrawler, BrowserConfig, CrawlerRunConfig, CacheMode, LLMConfig, LLMExtractionStrategy
 from crawl4ai.deep_crawling import BFSDeepCrawlStrategy
 from crawl4ai.deep_crawling.filters import FilterChain, URLPatternFilter
 
-async def crawl_ecommerce_site():
-    print("\n=== Deep Crawling E-commerce Site with Streaming, Filtering, and Memory Check ===")
+# Pydantic model for product data extraction
+class Product(BaseModel):
+    name: str = Field(..., description="The name of the product")
+    price: float = Field(..., description="The price of the product")
+    description: Optional[str] = Field(None, description="The description of the product")
+    sku: Optional[str] = Field(None, description="The SKU of the product")
+    image_url: Optional[str] = Field(None, description="The URL of the product image")
+
+async def crawl_and_extract():
+    print("\n=== Deep Crawling and Extracting Products with Streaming and Batch Inserts ===")
 
     # We'll keep track of peak memory usage across all tasks
     peak_memory = 0
@@ -54,21 +66,30 @@ async def crawl_ecommerce_site():
         extra_args=["--disable-gpu", "--disable-dev-shm-usage", "--no-sandbox"],
     )
 
-    # URL filtering to exclude irrelevant pages.
-    # Customize these patterns to match the URL structure of your target e-commerce site.
+    # LLM configuration
+    llm_config = LLMConfig(
+        provider="openai/gpt-4-turbo",
+        api_token=OPENAI_API_KEY,
+        temperature=0.0,
+    )
+
+    # Extraction strategy
+    extraction_strategy = LLMExtractionStrategy(
+        llm_config=llm_config,
+        pydantic_model=Product,
+        max_items=1,
+    )
+
+    # URL filtering to focus on product and category pages
     filter_chain = FilterChain([
         URLPatternFilter(
-            patterns=["*/cart", "*/account", "*/login"],  # Exclude irrelevant pages
-            reverse=True
+            patterns=["*/product/*", "*/category/*"],
         )
     ])
 
     # Deep crawling strategy
-    # - max_depth=0 means unlimited depth.
-    # - max_pages is a safeguard to prevent crawling more than 1.1M pages.
-    # - include_external=False keeps the crawler on the target domain.
     deep_crawl_strategy = BFSDeepCrawlStrategy(
-        max_depth=0,  # Unlimited depth
+        max_depth=10,  # Limit depth to 10 to avoid infinite loops, but still get deep enough
         max_pages=1100000,
         include_external=False,
         filter_chain=filter_chain,
@@ -77,36 +98,53 @@ async def crawl_ecommerce_site():
     crawl_config = CrawlerRunConfig(
         cache_mode=CacheMode.BYPASS,
         deep_crawl_strategy=deep_crawl_strategy,
-        stream=True,  # Enable streaming
+        extraction_strategy=extraction_strategy,
+        stream=True,
     )
 
     # Create the crawler instance
     crawler = AsyncWebCrawler(config=browser_config)
     await crawler.start()
 
+    products_batch = []
+    batch_size = 50
     success_count = 0
     fail_count = 0
     try:
         log_memory(prefix="Before crawl: ")
 
         async for result in await crawler.arun(url=ECOMMERCE_TARGET_URL, config=crawl_config):
-            if result.success:
-                success_count += 1
+            if result.success and result.extracted_content:
                 try:
-                    client = get_supabase_client()
-                    data, count = client.table(SUPABASE_TABLE_NAME).insert({"url": result.url, "content": result.markdown}).execute()
-                except Exception as e:
-                    print(f"Error inserting data for {result.url}: {e}")
-            else:
-                fail_count += 1
-                print(f"Error crawling {result.url}: {result.error_message}")
+                    product_data = json.loads(result.extracted_content)[0]
+                    product_data['url'] = result.url
+                    products_batch.append(product_data)
 
-            if (success_count + fail_count) % 100 == 0:
-                log_memory(prefix=f"After {success_count + fail_count} pages: ")
+                    if len(products_batch) >= batch_size:
+                        client = get_supabase_client()
+                        data, count = client.table(PRODUCTS_TABLE_NAME).insert(products_batch).execute()
+                        success_count += len(products_batch)
+                        print(f"Inserted batch of {len(products_batch)} products.")
+                        products_batch = []
+
+                except (json.JSONDecodeError, IndexError) as e:
+                    print(f"Error parsing extracted content for {result.url}: {e}")
+                    fail_count += 1
+
+            elif not result.success:
+                print(f"Error crawling {result.url}: {result.error_message}")
+                fail_count += 1
+
+        # Insert any remaining products in the last batch
+        if products_batch:
+            client = get_supabase_client()
+            data, count = client.table(PRODUCTS_TABLE_NAME).insert(products_batch).execute()
+            success_count += len(products_batch)
+            print(f"Inserted final batch of {len(products_batch)} products.")
 
         print(f"\nSummary:")
-        print(f"  - Successfully crawled: {success_count}")
-        print(f"  - Failed: {fail_count}")
+        print(f"  - Successfully extracted and stored: {success_count}")
+        print(f"  - Failed or no data: {fail_count}")
 
     finally:
         print("\nClosing crawler...")
@@ -119,9 +157,12 @@ async def main():
     if not ECOMMERCE_TARGET_URL:
         print("ECOMMERCE_TARGET_URL environment variable is not set.")
         return
+    if not OPENAI_API_KEY:
+        print("OPENAI_API_KEY environment variable is not set.")
+        return
 
-    print(f"Starting to crawl {ECOMMERCE_TARGET_URL}")
-    await crawl_ecommerce_site()
+    await crawl_and_extract()
+
 
 if __name__ == "__main__":
     asyncio.run(main())
