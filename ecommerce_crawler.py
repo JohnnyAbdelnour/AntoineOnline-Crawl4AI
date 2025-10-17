@@ -5,7 +5,7 @@ import asyncio
 import json
 from supabase import create_client, Client
 from dotenv import load_dotenv
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
 from typing import Optional, List
 
 load_dotenv()
@@ -116,7 +116,9 @@ async def crawl_and_extract():
         async for result in await crawler.arun(url=ECOMMERCE_TARGET_URL, config=crawl_config):
             if result.success and result.extracted_content:
                 try:
-                    product_data = json.loads(result.extracted_content)[0]
+                    # Validate the extracted data against the Pydantic model
+                    validated_product = Product(**json.loads(result.extracted_content)[0])
+                    product_data = validated_product.dict()
                     product_data['url'] = result.url
                     products_batch.append(product_data)
 
@@ -127,8 +129,8 @@ async def crawl_and_extract():
                         print(f"Inserted batch of {len(products_batch)} products.")
                         products_batch = []
 
-                except (json.JSONDecodeError, IndexError) as e:
-                    print(f"Error parsing extracted content for {result.url}: {e}")
+                except (json.JSONDecodeError, IndexError, ValidationError) as e:
+                    print(f"Error validating or parsing extracted content for {result.url}: {e}")
                     fail_count += 1
 
             elif not result.success:
