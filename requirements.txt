@@ -1,0 +1,5 @@
+supabase
+psutil
+requests
+crawl4ai
+python-dotenv

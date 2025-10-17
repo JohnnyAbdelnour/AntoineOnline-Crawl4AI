@@ -4,6 +4,15 @@ import psutil
 import asyncio
 import requests
 from xml.etree import ElementTree
+from supabase import create_client, Client
+from dotenv import load_dotenv
+
+load_dotenv()
+
+# Supabase connection details
+SUPABASE_URL = os.environ.get("SUPABASE_URL")
+SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
+supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 __location__ = os.path.dirname(os.path.abspath(__file__))
 __output__ = os.path.join(__location__, "output")
@@ -71,6 +80,11 @@ async def crawl_parallel(urls: List[str], max_concurrent: int = 3):
                     fail_count += 1
                 elif result.success:
                     success_count += 1
+                    # Store the result in Supabase
+                    try:
+                        data, count = supabase.table('Data').insert({"url": url, "content": result.markdown}).execute()
+                    except Exception as e:
+                        print(f"Error inserting data for {url}: {e}")
                 else:
                     fail_count += 1
 
