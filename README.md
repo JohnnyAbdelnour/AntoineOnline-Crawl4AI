@@ -46,6 +46,7 @@ CREATE TABLE "products" (
     -   In the developer tools, right-click on the highlighted HTML element and choose "Copy > Copy selector".
     -   Paste the copied selector into the corresponding `CSS_SELECTOR_*` variable in your `.env` file.
     -   The `CSS_SELECTOR_BASE` is the selector for the container that holds all the product information. This is useful for pages that have multiple products, as it tells the crawler where to look for each product. If you are only extracting one product per page, you can leave this as `body`.
+    -   **Note:** The script now uses a list-based schema for the CSS selectors. The environment variables are used to build this schema dynamically.
 7.  Run the `discover` mode to find all product URLs:
     ```bash
     python ecommerce_crawler.py discover

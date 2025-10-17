@@ -135,16 +135,12 @@ async def extract_product_data():
     # CSS selectors for product data
     extraction_schema = {
         "baseSelector": CSS_SELECTOR_BASE,
-        "fields": {
-            "name": CSS_SELECTOR_NAME,
-            "price": CSS_SELECTOR_PRICE,
-            "description": CSS_SELECTOR_DESCRIPTION,
-            "image_url": {
-                "selector": CSS_SELECTOR_IMAGE_URL,
-                "type": "attribute",
-                "attribute": "src"
-            }
-        }
+        "fields": [
+            {"name": "name", "selector": CSS_SELECTOR_NAME, "type": "text"},
+            {"name": "price", "selector": CSS_SELECTOR_PRICE, "type": "text"},
+            {"name": "description", "selector": CSS_SELECTOR_DESCRIPTION, "type": "text"},
+            {"name": "image_url", "selector": CSS_SELECTOR_IMAGE_URL, "type": "attribute", "attribute": "src"}
+        ]
     }
 
     # Extraction strategy
@@ -169,7 +165,7 @@ async def extract_product_data():
             if result.success and result.extracted_content:
                 try:
                     # Validate the extracted data against the Pydantic model
-                    product_data = json.loads(result.extracted_content)
+                    product_data = json.loads(result.extracted_content)[0]
                     # The price is extracted as a string like "3.57 USD", so we need to parse it
                     if 'price' in product_data and isinstance(product_data['price'], str):
                         product_data['price'] = float(product_data['price'].replace('USD', '').strip())
