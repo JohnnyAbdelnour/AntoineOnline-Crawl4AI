@@ -41,11 +41,15 @@ CREATE TABLE "products" (
     -   Before running the crawler, you need to determine the URL pattern for product pages on your target website.
     -   For example, if your product pages have URLs like `https://example.com/products/my-product-name`, your pattern would be `/products/`.
     -   Set this value for the `PRODUCT_URL_PATTERN` variable in your `.env` file.
-6.  Run the `discover` mode to find all product URLs:
+6.  **Configure the `EXTRACTION_INSTRUCTION` (Optional)**:
+    -   The script uses a default instruction to guide the AI in extracting the product data.
+    -   If you find that the extraction is not accurate for your target website, you can provide a more specific instruction in the `EXTRACTION_INSTRUCTION` variable in your `.env` file.
+    -   A good instruction should be clear and specific. For example: *"Extract the product name from the `h1` tag, the price from the element with the `price` class, and the description from the element with the `description` id."*
+7.  Run the `discover` mode to find all product URLs:
     ```bash
     python ecommerce_crawler.py discover
     ```
-7.  Once the discovery is complete, run the `extract` mode to extract the product data:
+8.  Once the discovery is complete, run the `extract` mode to extract the product data:
     ```bash
     python ecommerce_crawler.py extract
     ```

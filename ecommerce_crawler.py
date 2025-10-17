@@ -27,6 +27,7 @@ ECOMMERCE_TARGET_URL = os.environ.get("ECOMMERCE_TARGET_URL")
 PRODUCTS_TABLE_NAME = os.environ.get("PRODUCTS_TABLE_NAME", "products")
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
 PRODUCT_URL_PATTERN = os.environ.get("PRODUCT_URL_PATTERN", "/product/")
+EXTRACTION_INSTRUCTION = os.environ.get("EXTRACTION_INSTRUCTION", "Extract the product name, price, description, SKU, and image URL from the text. If a field is not found, omit it from the output.")
 URLS_FILE = "product_urls.txt"
 
 __location__ = os.path.dirname(os.path.abspath(__file__))
@@ -131,6 +132,7 @@ async def extract_product_data():
     extraction_strategy = LLMExtractionStrategy(
         llm_config=llm_config,
         pydantic_model=Product,
+        instruction=EXTRACTION_INSTRUCTION,
         max_items=1,
     )
 
