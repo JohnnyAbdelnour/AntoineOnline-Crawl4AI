@@ -26,6 +26,7 @@ def get_supabase_client():
 ECOMMERCE_TARGET_URL = os.environ.get("ECOMMERCE_TARGET_URL")
 PRODUCTS_TABLE_NAME = os.environ.get("PRODUCTS_TABLE_NAME", "products")
 PRODUCT_URL_PATTERN = os.environ.get("PRODUCT_URL_PATTERN", "/product/")
+CSS_SELECTOR_BASE = os.environ.get("CSS_SELECTOR_BASE", "body")
 CSS_SELECTOR_NAME = os.environ.get("CSS_SELECTOR_NAME", "h1.title")
 CSS_SELECTOR_PRICE = os.environ.get("CSS_SELECTOR_PRICE", "div.product-price")
 CSS_SELECTOR_DESCRIPTION = os.environ.get("CSS_SELECTOR_DESCRIPTION", "h2.text")
@@ -133,13 +134,16 @@ async def extract_product_data():
 
     # CSS selectors for product data
     extraction_schema = {
-        "name": CSS_SELECTOR_NAME,
-        "price": CSS_SELECTOR_PRICE,
-        "description": CSS_SELECTOR_DESCRIPTION,
-        "image_url": {
-            "selector": CSS_SELECTOR_IMAGE_URL,
-            "type": "attribute",
-            "attribute": "src"
+        "baseSelector": CSS_SELECTOR_BASE,
+        "fields": {
+            "name": CSS_SELECTOR_NAME,
+            "price": CSS_SELECTOR_PRICE,
+            "description": CSS_SELECTOR_DESCRIPTION,
+            "image_url": {
+                "selector": CSS_SELECTOR_IMAGE_URL,
+                "type": "attribute",
+                "attribute": "src"
+            }
         }
     }
 

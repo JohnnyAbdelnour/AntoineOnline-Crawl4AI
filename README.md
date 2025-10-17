@@ -45,6 +45,7 @@ CREATE TABLE "products" (
     -   To find the selectors, open a product page in your browser, right-click on the element you want to extract (e.g., the product name), and select "Inspect".
     -   In the developer tools, right-click on the highlighted HTML element and choose "Copy > Copy selector".
     -   Paste the copied selector into the corresponding `CSS_SELECTOR_*` variable in your `.env` file.
+    -   The `CSS_SELECTOR_BASE` is the selector for the container that holds all the product information. This is useful for pages that have multiple products, as it tells the crawler where to look for each product. If you are only extracting one product per page, you can leave this as `body`.
 7.  Run the `discover` mode to find all product URLs:
     ```bash
     python ecommerce_crawler.py discover
