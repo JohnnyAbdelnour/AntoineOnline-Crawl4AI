@@ -1,15 +1,15 @@
 # E-commerce Product Extractor
 
-This script uses `crawl4ai` to crawl an e-commerce website, extract structured product information, and store it in a Supabase table.
+This script uses `crawl4ai` to crawl an e-commerce website, extract structured product information using CSS selectors, and store it in a Supabase table.
 
 ## Two-Stage Process
 
 The script operates in two distinct modes:
 
 1.  **`discover`**: In this mode, the script crawls the entire website to find the URLs of all product pages. It saves these URLs to a file named `product_urls.txt`.
-2.  **`extract`**: In this mode, the script reads the URLs from `product_urls.txt`, visits each page, extracts the product details using an LLM, and saves the structured data to your Supabase `products` table.
+2.  **`extract`**: In this mode, the script reads the URLs from `product_urls.txt`, visits each page, extracts the product details using CSS selectors, and saves the structured data to your Supabase `products` table.
 
-This two-stage process is more robust and efficient, as it separates the discovery of product pages from the data extraction process.
+This two-stage process is more robust and efficient, as it separates the discovery of product pages from the data extraction process. The crawler is also configured with an increased navigation timeout and advanced URL filtering to handle complex websites and prevent errors.
 
 ## Supabase Setup
 
@@ -25,7 +25,6 @@ CREATE TABLE "products" (
     name text,
     price float,
     description text,
-    sku text,
     image_url text,
     created_at timestamp with time zone default now()
 );
@@ -36,15 +35,16 @@ CREATE TABLE "products" (
 1.  Clone this repository.
 2.  Install the dependencies: `pip install -r requirements.txt`
 3.  Create a `.env` file by copying the `.env.example` file: `cp .env.example .env`
-4.  Fill in the required values in the `.env` file, including your OpenAI API key for LLM-based extraction.
+4.  Fill in the required values in the `.env` file.
 5.  **Configure the `PRODUCT_URL_PATTERN`**:
     -   Before running the crawler, you need to determine the URL pattern for product pages on your target website.
     -   For example, if your product pages have URLs like `https://example.com/products/my-product-name`, your pattern would be `/products/`.
     -   Set this value for the `PRODUCT_URL_PATTERN` variable in your `.env` file.
-6.  **Configure the `EXTRACTION_INSTRUCTION` (Optional)**:
-    -   The script uses a default instruction to guide the AI in extracting the product data.
-    -   If you find that the extraction is not accurate for your target website, you can provide a more specific instruction in the `EXTRACTION_INSTRUCTION` variable in your `.env` file.
-    -   A good instruction should be clear and specific. For example: *"Extract the product name from the `h1` tag, the price from the element with the `price` class, and the description from the element with the `description` id."*
+6.  **Configure the CSS Selectors**:
+    -   To extract the product data, you need to provide the CSS selectors for each data field.
+    -   To find the selectors, open a product page in your browser, right-click on the element you want to extract (e.g., the product name), and select "Inspect".
+    -   In the developer tools, right-click on the highlighted HTML element and choose "Copy > Copy selector".
+    -   Paste the copied selector into the corresponding `CSS_SELECTOR_*` variable in your `.env` file.
 7.  Run the `discover` mode to find all product URLs:
     ```bash
     python ecommerce_crawler.py discover
