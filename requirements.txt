@@ -5,5 +5,5 @@ crawl4ai
 python-dotenv
 fastapi
 uvicorn
-openai
+ollama
 python-multipart

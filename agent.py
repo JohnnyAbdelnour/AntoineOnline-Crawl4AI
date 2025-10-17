@@ -1,7 +1,7 @@
 import os
 from fastapi import FastAPI, Form, Request
 from fastapi.responses import HTMLResponse
-import openai
+import ollama
 from supabase import create_client, Client
 from dotenv import load_dotenv
 
@@ -11,10 +11,11 @@ load_dotenv()
 # Initialize FastAPI app
 app = FastAPI()
 
-# Get Supabase and OpenAI credentials from environment variables
+# Get Supabase and Ollama credentials from environment variables
 SUPABASE_URL = os.environ.get("SUPABASE_URL")
 SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
-OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
+OLLAMA_HOST = os.environ.get("OLLAMA_HOST")
+OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL", "llama2")
 PRODUCTS_TABLE_NAME = os.environ.get("PRODUCTS_TABLE_NAME", "products")
 
 # Initialize Supabase client
@@ -22,8 +23,14 @@ supabase: Client = None
 if SUPABASE_URL and SUPABASE_KEY:
     supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-# Initialize OpenAI client
-client = openai.OpenAI(api_key=OPENAI_API_KEY)
+# Check for Ollama Host
+if not OLLAMA_HOST:
+    raise ValueError("The OLLAMA_HOST environment variable must be set.")
+
+# Initialize Ollama client
+# Note: The Ollama Python library typically connects to a running Ollama instance.
+# The user needs to provide the host URL for their Ollama service.
+client = ollama.Client(host=OLLAMA_HOST)
 
 # HTML for the web form
 html_form = """
@@ -72,14 +79,14 @@ async def ask_agent(question: str = Form(...)):
         prompt = f"Context: {context}\\n\\nQuestion: {question}\\n\\nAnswer:"
 
         # Get the response from the LLM
-        chat_completion = client.chat.completions.create(
-            model="gpt-4o-mini",
+        response = client.chat(
+            model=OLLAMA_MODEL,
             messages=[
                 {"role": "system", "content": "You are a helpful assistant that answers questions based on the provided context about e-commerce products."},
                 {"role": "user", "content": prompt}
             ]
         )
-        answer = chat_completion.choices[0].message.content.strip()
+        answer = response['message']['content']
 
         return html_form.format(response=answer)
 
