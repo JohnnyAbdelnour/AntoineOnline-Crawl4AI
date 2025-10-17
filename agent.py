@@ -14,8 +14,8 @@ app = FastAPI()
 # Get Supabase and Ollama credentials from environment variables
 SUPABASE_URL = os.environ.get("SUPABASE_URL")
 SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
-OLLAMA_HOST = os.environ.get("OLLAMA_HOST")
-OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL", "llama2")
+OLLAMA_API_KEY = os.environ.get("OLLAMA_API_KEY")
+OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL", "gpt-oss:20b-cloud")
 PRODUCTS_TABLE_NAME = os.environ.get("PRODUCTS_TABLE_NAME", "products")
 
 # Initialize Supabase client
@@ -23,14 +23,15 @@ supabase: Client = None
 if SUPABASE_URL and SUPABASE_KEY:
     supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-# Check for Ollama Host
-if not OLLAMA_HOST:
-    raise ValueError("The OLLAMA_HOST environment variable must be set.")
+# Check for Ollama API key
+if not OLLAMA_API_KEY:
+    raise ValueError("The OLLAMA_API_KEY environment variable must be set for Ollama Cloud.")
 
-# Initialize Ollama client
-# Note: The Ollama Python library typically connects to a running Ollama instance.
-# The user needs to provide the host URL for their Ollama service.
-client = ollama.Client(host=OLLAMA_HOST)
+# Initialize Ollama client for Cloud service
+client = ollama.Client(
+    host="https://ollama.com",
+    headers={'Authorization': f'Bearer {OLLAMA_API_KEY}'}
+)
 
 # HTML for the web form
 html_form = """
