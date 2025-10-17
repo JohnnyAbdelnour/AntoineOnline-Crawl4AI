@@ -54,15 +54,12 @@ async def crawl_ecommerce_site():
         extra_args=["--disable-gpu", "--disable-dev-shm-usage", "--no-sandbox"],
     )
 
-    # URL filtering to focus on products and categories.
+    # URL filtering to exclude irrelevant pages.
     # Customize these patterns to match the URL structure of your target e-commerce site.
     filter_chain = FilterChain([
         URLPatternFilter(
             patterns=["*/cart", "*/account", "*/login"],  # Exclude irrelevant pages
             reverse=True
-        ),
-        URLPatternFilter(
-            patterns=["*/product/*", "*/category/*"]  # Allow product and category pages
         )
     ])
 
