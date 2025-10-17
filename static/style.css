@@ -1,0 +1,140 @@
+body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    background-color: #e5e5ea;
+    margin: 0;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 100vh;
+}
+
+.chat-container {
+    width: 100%;
+    max-width: 400px;
+    height: 95vh;
+    max-height: 800px;
+    display: flex;
+    flex-direction: column;
+    background-color: #ffffff;
+    border-radius: 20px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    overflow: hidden;
+}
+
+.chat-header {
+    background-color: #007bff;
+    color: white;
+    padding: 15px;
+    text-align: center;
+    font-size: 1.2em;
+    font-weight: 500;
+}
+
+.chat-body {
+    flex-grow: 1;
+    padding: 20px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+}
+
+.message {
+    display: flex;
+    margin-bottom: 15px;
+    max-width: 80%;
+}
+
+.message.user {
+    align-self: flex-end;
+    flex-direction: row-reverse;
+}
+
+.message.ai {
+    align-self: flex-start;
+}
+
+.avatar {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    margin: 0 10px;
+}
+
+.message-bubble {
+    padding: 10px 15px;
+    border-radius: 20px;
+    color: white;
+}
+
+.message.user .message-bubble {
+    background-color: #007bff;
+}
+
+.message.ai .message-bubble {
+    background-color: #f0f0f0;
+    color: #333;
+}
+
+.chat-footer {
+    padding: 10px;
+    border-top: 1px solid #e0e0e0;
+    background-color: #f8f9fa;
+    display: flex;
+    align-items: center;
+}
+
+.chat-footer form {
+    display: flex;
+    flex-grow: 1;
+}
+
+.chat-footer input[type="text"] {
+    flex-grow: 1;
+    border: 1px solid #ced4da;
+    border-radius: 20px;
+    padding: 10px 15px;
+    font-size: 1em;
+    outline: none;
+}
+
+.chat-footer button {
+    background-color: transparent;
+    border: none;
+    cursor: pointer;
+    padding: 0 10px;
+}
+
+.chat-footer button img {
+    width: 24px;
+    height: 24px;
+}
+
+.product-info {
+    border: 1px solid #e0e0e0;
+    border-radius: 10px;
+    padding: 15px;
+    margin-top: 15px;
+}
+
+.product-info h3 {
+    margin-top: 0;
+}
+
+.product-info img {
+    max-width: 100%;
+    border-radius: 10px;
+    margin-top: 10px;
+}
+
+ul {
+    list-style-type: none;
+    padding: 0;
+}
+
+li {
+    margin-bottom: 5px;
+}
+
+strong {
+    font-weight: 500;
+}
