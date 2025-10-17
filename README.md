@@ -2,6 +2,15 @@
 
 This script uses `crawl4ai` to crawl an e-commerce website, extract structured product information, and store it in a Supabase table.
 
+## Two-Stage Process
+
+The script operates in two distinct modes:
+
+1.  **`discover`**: In this mode, the script crawls the entire website to find the URLs of all product pages. It saves these URLs to a file named `product_urls.txt`.
+2.  **`extract`**: In this mode, the script reads the URLs from `product_urls.txt`, visits each page, extracts the product details using an LLM, and saves the structured data to your Supabase `products` table.
+
+This two-stage process is more robust and efficient, as it separates the discovery of product pages from the data extraction process.
+
 ## Supabase Setup
 
 You will need a Supabase project to store the crawled data.
@@ -28,4 +37,11 @@ CREATE TABLE "products" (
 2.  Install the dependencies: `pip install -r requirements.txt`
 3.  Create a `.env` file by copying the `.env.example` file: `cp .env.example .env`
 4.  Fill in the required values in the `.env` file, including your OpenAI API key for LLM-based extraction.
-5.  Run the crawler: `python ecommerce_crawler.py`
+5.  Run the `discover` mode to find all product URLs:
+    ```bash
+    python ecommerce_crawler.py discover
+    ```
+6.  Once the discovery is complete, run the `extract` mode to extract the product data:
+    ```bash
+    python ecommerce_crawler.py extract
+    ```

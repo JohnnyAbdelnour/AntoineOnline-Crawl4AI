@@ -3,6 +3,7 @@ import sys
 import psutil
 import asyncio
 import json
+import argparse
 from supabase import create_client, Client
 from dotenv import load_dotenv
 from pydantic import BaseModel, Field, ValidationError
@@ -25,6 +26,7 @@ def get_supabase_client():
 ECOMMERCE_TARGET_URL = os.environ.get("ECOMMERCE_TARGET_URL")
 PRODUCTS_TABLE_NAME = os.environ.get("PRODUCTS_TABLE_NAME", "products")
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
+URLS_FILE = "product_urls.txt"
 
 __location__ = os.path.dirname(os.path.abspath(__file__))
 __output__ = os.path.join(__location__, "output")
@@ -45,8 +47,8 @@ class Product(BaseModel):
     sku: Optional[str] = Field(None, description="The SKU of the product")
     image_url: Optional[str] = Field(None, description="The URL of the product image")
 
-async def crawl_and_extract():
-    print("\n=== Deep Crawling and Extracting Products with Streaming and Batch Inserts ===")
+async def discover_product_urls():
+    print("\n=== Discovering Product URLs ===")
 
     # We'll keep track of peak memory usage across all tasks
     peak_memory = 0
@@ -64,20 +66,6 @@ async def crawl_and_extract():
         headless=True,
         verbose=False,
         extra_args=["--disable-gpu", "--disable-dev-shm-usage", "--no-sandbox"],
-    )
-
-    # LLM configuration
-    llm_config = LLMConfig(
-        provider="openai/gpt-4-turbo",
-        api_token=OPENAI_API_KEY,
-        temperature=0.0,
-    )
-
-    # Extraction strategy
-    extraction_strategy = LLMExtractionStrategy(
-        llm_config=llm_config,
-        pydantic_model=Product,
-        max_items=1,
     )
 
     # URL filtering to focus on product and category pages
@@ -98,7 +86,6 @@ async def crawl_and_extract():
     crawl_config = CrawlerRunConfig(
         cache_mode=CacheMode.BYPASS,
         deep_crawl_strategy=deep_crawl_strategy,
-        extraction_strategy=extraction_strategy,
         stream=True,
     )
 
@@ -106,20 +93,76 @@ async def crawl_and_extract():
     crawler = AsyncWebCrawler(config=browser_config)
     await crawler.start()
 
+    product_urls = set()
+    try:
+        log_memory(prefix="Before crawl: ")
+
+        async for result in await crawler.arun(url=ECOMMERCE_TARGET_URL, config=crawl_config):
+            if result.success and "/product/" in result.url:
+                product_urls.add(result.url)
+
+        print(f"\nFound {len(product_urls)} unique product URLs.")
+
+        with open(URLS_FILE, "w") as f:
+            for url in product_urls:
+                f.write(f"{url}\n")
+        print(f"Saved product URLs to {URLS_FILE}")
+
+    finally:
+        print("\nClosing crawler...")
+        await crawler.close()
+        # Final memory log
+        log_memory(prefix="Final: ")
+        print(f"\nPeak memory usage (MB): {peak_memory // (1024 * 1024)}")
+
+async def extract_product_data():
+    print("\n=== Extracting Product Data ===")
+
+    if not os.path.exists(URLS_FILE):
+        print(f"Error: {URLS_FILE} not found. Please run the 'discover' mode first.")
+        return
+
+    with open(URLS_FILE, "r") as f:
+        urls = [line.strip() for line in f.readlines()]
+
+    print(f"Found {len(urls)} URLs to process.")
+
+    # LLM configuration
+    llm_config = LLMConfig(
+        provider="openai/gpt-4-turbo",
+        api_token=OPENAI_API_KEY,
+        temperature=0.0,
+    )
+
+    # Extraction strategy
+    extraction_strategy = LLMExtractionStrategy(
+        llm_config=llm_config,
+        pydantic_model=Product,
+        max_items=1,
+    )
+
+    crawl_config = CrawlerRunConfig(
+        cache_mode=CacheMode.BYPASS,
+        extraction_strategy=extraction_strategy,
+    )
+
+    # Create the crawler instance
+    crawler = AsyncWebCrawler()
+    await crawler.start()
+
     products_batch = []
     batch_size = 50
     success_count = 0
     fail_count = 0
     try:
-        log_memory(prefix="Before crawl: ")
-
-        async for result in await crawler.arun(url=ECOMMERCE_TARGET_URL, config=crawl_config):
+        for url in urls:
+            result = await crawler.arun(url=url, config=crawl_config)
             if result.success and result.extracted_content:
                 try:
                     # Validate the extracted data against the Pydantic model
                     validated_product = Product(**json.loads(result.extracted_content)[0])
                     product_data = validated_product.dict()
-                    product_data['url'] = result.url
+                    product_data['url'] = url
                     products_batch.append(product_data)
 
                     if len(products_batch) >= batch_size:
@@ -130,11 +173,11 @@ async def crawl_and_extract():
                         products_batch = []
 
                 except (json.JSONDecodeError, IndexError, ValidationError) as e:
-                    print(f"Error validating or parsing extracted content for {result.url}: {e}")
+                    print(f"Error validating or parsing extracted content for {url}: {e}")
                     fail_count += 1
 
             elif not result.success:
-                print(f"Error crawling {result.url}: {result.error_message}")
+                print(f"Error crawling {url}: {result.error_message}")
                 fail_count += 1
 
         # Insert any remaining products in the last batch
@@ -151,19 +194,22 @@ async def crawl_and_extract():
     finally:
         print("\nClosing crawler...")
         await crawler.close()
-        # Final memory log
-        log_memory(prefix="Final: ")
-        print(f"\nPeak memory usage (MB): {peak_memory // (1024 * 1024)}")
 
 async def main():
-    if not ECOMMERCE_TARGET_URL:
-        print("ECOMMERCE_TARGET_URL environment variable is not set.")
-        return
-    if not OPENAI_API_KEY:
-        print("OPENAI_API_KEY environment variable is not set.")
-        return
+    parser = argparse.ArgumentParser(description="E-commerce product crawler and extractor.")
+    parser.add_argument("mode", choices=["discover", "extract"], help="The mode to run the script in.")
+    args = parser.parse_args()
 
-    await crawl_and_extract()
+    if args.mode == "discover":
+        if not ECOMMERCE_TARGET_URL:
+            print("ECOMMERCE_TARGET_URL environment variable is not set.")
+            return
+        await discover_product_urls()
+    elif args.mode == "extract":
+        if not OPENAI_API_KEY:
+            print("OPENAI_API_KEY environment variable is not set.")
+            return
+        await extract_product_data()
 
 
 if __name__ == "__main__":
