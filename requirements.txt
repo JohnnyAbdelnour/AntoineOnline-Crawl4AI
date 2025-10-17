@@ -3,3 +3,7 @@ psutil
 requests
 crawl4ai
 python-dotenv
+fastapi
+uvicorn
+openai
+python-multipart

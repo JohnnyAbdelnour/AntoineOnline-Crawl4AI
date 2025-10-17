@@ -55,3 +55,17 @@ CREATE TABLE "products" (
     ```bash
     python ecommerce_crawler.py extract
     ```
+
+## Running the AI Agent
+
+After you have extracted the product data, you can run the AI agent to ask questions about it.
+
+1.  **Set your OpenAI API Key**:
+    -   Make sure you have an OpenAI account and an API key.
+    -   Add your API key to the `.env` file: `OPENAI_API_KEY=your_key_here`
+2.  **Run the agent**:
+    ```bash
+    uvicorn agent:app --reload
+    ```
+3.  **Open your browser**:
+    -   Navigate to `http://127.0.0.1:8000` to interact with the AI agent.
