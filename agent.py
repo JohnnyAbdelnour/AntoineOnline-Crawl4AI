@@ -36,18 +36,119 @@ client = ollama.Client(
 # HTML for the web form
 html_form = """
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-    <title>AI Agent</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Najjar Online - AI Assistant</title>
+    <style>
+        body {{
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            background-color: #f0f2f5;
+            margin: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+        }}
+        .chat-container {{
+            width: 100%;
+            max-width: 400px;
+            height: 95vh;
+            max-height: 800px;
+            display: flex;
+            flex-direction: column;
+            background-color: #ffffff;
+            border-radius: 20px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+            overflow: hidden;
+        }}
+        .chat-header {{
+            background-color: #007bff;
+            color: white;
+            padding: 15px;
+            text-align: center;
+            font-size: 1.2em;
+            font-weight: 500;
+        }}
+        .chat-body {{
+            flex-grow: 1;
+            padding: 20px;
+            overflow-y: auto;
+        }}
+        .chat-footer {{
+            padding: 10px;
+            border-top: 1px solid #e0e0e0;
+            background-color: #f8f9fa;
+        }}
+        .chat-footer form {{
+            display: flex;
+        }}
+        .chat-footer input[type="text"] {{
+            flex-grow: 1;
+            border: 1px solid #ced4da;
+            border-radius: 20px;
+            padding: 10px 15px;
+            font-size: 1em;
+            outline: none;
+        }}
+        .chat-footer button {{
+            background-color: #007bff;
+            color: white;
+            border: none;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            margin-left: 10px;
+            cursor: pointer;
+            font-size: 1.2em;
+        }}
+        .response-area {{
+            margin-top: 20px;
+        }}
+        .product-info {{
+            border: 1px solid #e0e0e0;
+            border-radius: 10px;
+            padding: 15px;
+            margin-top: 15px;
+        }}
+        .product-info h3 {{
+            margin-top: 0;
+        }}
+        .product-info img {{
+            max-width: 100%;
+            border-radius: 10px;
+            margin-top: 10px;
+        }}
+        ul {{
+            list-style-type: none;
+            padding: 0;
+        }}
+        li {{
+            margin-bottom: 5px;
+        }}
+        strong {{
+            font-weight: 500;
+        }}
+    </style>
 </head>
 <body>
-    <h1>Ask the AI Agent</h1>
-    <form action="/" method="post">
-        <input type="text" name="question" style="width: 300px;" />
-        <button type="submit">Ask</button>
-    </form>
-    <h2>Answer:</h2>
-    <p>{response}</p>
+    <div class="chat-container">
+        <div class="chat-header">
+            Najjar Online AI Assistant
+        </div>
+        <div class="chat-body">
+            <div class="response-area">
+                {response}
+            </div>
+        </div>
+        <div class="chat-footer">
+            <form action="/" method="post">
+                <input type="text" name="question" placeholder="Type your message...">
+                <button type="submit">&#10148;</button>
+            </form>
+        </div>
+    </div>
 </body>
 </html>
 """
@@ -74,7 +175,7 @@ async def ask_agent(question: str = Form(...)):
             return html_form.format(response="No product data found in the database.")
 
         # Prepare the context for the LLM
-        context = " ".join([f"Product: {p['name']}, Price: {p['price']}, Description: {p['description']}" for p in products])
+        context = " ".join([f"Product: {p['name']}, Price: {p['price']}, Description: {p['description']}, Image_URL: {p['image_url']}" for p in products])
 
         # Create a prompt for the LLM
         prompt = f"Context: {context}\\n\\n<customer_query>{question}</customer_query>"
@@ -154,9 +255,45 @@ Never provide information that hasn't been verified through the database. Always
                 {"role": "user", "content": prompt}
             ]
         )
-        answer = response['message']['content']
+        raw_answer = response['message']['content']
 
-        return html_form.format(response=answer)
+        # Parse the markdown response
+        sections = {}
+        current_section = None
+        for line in raw_answer.split('\\n'):
+            line = line.strip()
+            if line.startswith('[') and line.endswith(']'):
+                current_section = line[1:-1].lower().replace(' ', '_')
+                sections[current_section] = []
+            elif current_section:
+                sections[current_section].append(line)
+
+        # Build the HTML response
+        html_response = ""
+        if 'professional_greeting' in sections:
+            html_response += f"<p>{' '.join(sections['professional_greeting'])}</p>"
+
+        if 'direct_answer_addressing_the_query' in sections:
+            html_response += f"<p>{' '.join(sections['direct_answer_addressing_the_query'])}</p>"
+
+        if 'detailed_product_information_from_database' in sections:
+            html_response += "<div class='product-info'>"
+            # This is a simplified parsing. A more robust solution would handle various markdown elements.
+            for item in sections['detailed_product_information_from_database']:
+                if 'Image URL:' in item:
+                    img_url = item.split('Image URL:')[1].strip()
+                    html_response += f'<img src="{img_url}" alt="Product Image">'
+                else:
+                    html_response += f"<p>{item}</p>"
+            html_response += "</div>"
+
+        if 'relevant_additional_context' in sections:
+            html_response += f"<p>{' '.join(sections['relevant_additional_context'])}</p>"
+
+        if 'professional_closing' in sections:
+            html_response += f"<p>{' '.join(sections['professional_closing'])}</p>"
+
+        return html_form.format(response=html_response)
 
     except Exception as e:
         return html_form.format(response=f"An error occurred: {e}")
