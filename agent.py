@@ -39,25 +39,8 @@ client = ollama.Client(host=OLLAMA_HOST, headers=headers)
 # In-memory store for chat histories
 chat_histories = {}
 
-class ChatRequest(BaseModel):
-    question: str
-    session_id: str = None
-
-@app.get("/", response_class=HTMLResponse)
-async def read_root(request: Request):
-    with open("static/index.html") as f:
-        return HTMLResponse(content=f.read(), status_code=200)
-
-@app.post("/ask", response_class=JSONResponse)
-async def ask(request: ChatRequest):
-    """Handle the form submission and respond to the user's question."""
-    try:
-        session_id = request.session_id
-        if not session_id or session_id not in chat_histories:
-            session_id = str(uuid.uuid4())
-            chat_histories[session_id] = []
-            # Add system prompt for new sessions
-            chat_histories[session_id].append({"role": "system", "content": """You are Najjar Online's dedicated customer support AI agent. Your primary responsibility is to provide accurate and professional product information by querying the Supabase database and formatting responses appropriately.
+# System prompt for the AI agent
+SYSTEM_PROMPT = """You are Najjar Online's dedicated customer support AI agent. Your primary responsibility is to provide accurate and professional product information by querying the Supabase database and formatting responses appropriately.
 
 INPUT:
 <customer_query>[[customer_query]]</customer_query>
@@ -124,62 +107,94 @@ Remember: Every response must be:
 - Clear and helpful
 - Accurate and complete
 
-Never provide information that hasn't been verified through the database. Always maintain a professional, helpful tone while ensuring accuracy and clarity in all communications.   Jump Logic/Success Prompt: When the response is relevant to the user's query, directly addresses their intent, or appropriately moves the conversation forward—such as by asking clarifying questions or requesting additional information—it should offer a clear, complete, and contextually appropriate resolution. If further action is required, the response includes timely and relevant follow-up such as next steps, useful links, or confirmations. Throughout the exchange, the assistant remains consistent with prior context, handles any limitations gracefully, and ensures that the user’s needs are met or clearly identifies what is required to proceed."""})
+Never provide information that hasn't been verified through the database. Always maintain a professional, helpful tone while ensuring accuracy and clarity in all communications.   Jump Logic/Success Prompt: When the response is relevant to the user's query, directly addresses their intent, or appropriately moves the conversation forward—such as by asking clarifying questions or requesting additional information—it should offer a clear, complete, and contextually appropriate resolution. If further action is required, the response includes timely and relevant follow-up such as next steps, useful links, or confirmations. Throughout the exchange, the assistant remains consistent with prior context, handles any limitations gracefully, and ensures that the user’s needs are met or clearly identifies what is required to proceed."""
 
-        question = request.question
+
+class ChatRequest(BaseModel):
+    question: str
+    session_id: str = None
+
+@app.get("/", response_class=HTMLResponse)
+async def read_root(request: Request):
+    with open("static/index.html") as f:
+        return HTMLResponse(content=f.read(), status_code=200)
+
+@app.post("/ask", response_class=JSONResponse)
+async def ask(request: ChatRequest):
+    session_id = request.session_id
+    question = request.question
+
+    try:
+        # Initialize session and history if it's new
+        if not session_id or session_id not in chat_histories:
+            session_id = str(uuid.uuid4())
+            chat_histories[session_id] = [{"role": "system", "content": SYSTEM_PROMPT}]
+
+        # Add user's question to the history
         chat_histories[session_id].append({"role": "user", "content": question})
 
-        # Check if Supabase client is initialized
+        # Check for Supabase client
         if not supabase:
+            error_message = "I'm having trouble connecting to the database. Please try again later."
+            chat_histories[session_id].append({"role": "assistant", "content": error_message})
             return JSONResponse(content={"history": chat_histories[session_id], "session_id": session_id})
 
-        # Use the LLM to generate a search query
-        search_query_prompt = f"Based on the following customer query, what is the most likely product they are looking for? Customer query: {question}. Respond with only the product name."
-        search_response = client.chat(model=OLLAMA_MODEL, messages=[{"role": "user", "content": search_query_prompt}])
+        # Step 1: Use LLM to generate a search query from the user's question
+        search_prompt = f"Extract the most relevant product search terms from the following query. Respond with only the search terms, separated by ' | ' for a text search. Query: '{question}'"
+        search_response = client.chat(
+            model=OLLAMA_MODEL,
+            messages=[{"role": "user", "content": search_prompt}]
+        )
         search_query = search_response['message']['content'].strip()
 
-        # Search for the product in the database
-        response = supabase.table(PRODUCTS_TABLE_NAME).select("*").text_search('name', search_query).execute()
-        products = response.data
+        # Step 2: Search for products in the database
+        db_response = supabase.table(PRODUCTS_TABLE_NAME).select("*").text_search('name', search_query, config='english').execute()
+        products = db_response.data
 
-        # Check if we got any products
+        # Handle case where no products are found
         if not products:
-            chat_histories[session_id].append({"role": "assistant", "content": "I could not find any products matching your query. Could you please be more specific?"})
+            answer = "I'm sorry, I couldn't find any products matching your description. Could you please try rephrasing your query or being more specific?"
+            chat_histories[session_id].append({"role": "assistant", "content": answer})
             return JSONResponse(content={"history": chat_histories[session_id], "session_id": session_id})
 
-        # Prepare the context for the LLM
+        # Step 3: Prepare context and generate the final response
         context_parts = []
         for p in products:
-            context_parts.append(f"Product: {p['name']}, Price: {p['price']}, Description: {p['description']}, Image_URL: {p['image_url']}")
-        context = " ".join(context_parts)
+            product_info = f"Product: {p.get('name', 'N/A')}, Price: {p.get('price', 'N/A')}, Description: {p.get('description', 'N/A')}"
+            context_parts.append(product_info)
+        context = "\n".join(context_parts)
 
-        # Create a prompt for the LLM
-        prompt = f"Context: {context}\\n\\n<customer_query>{question}</customer_query>"
+        final_prompt = f"Based on the following information from our database, please answer the customer's question. Adhere strictly to the persona and formatting rules from the system prompt.\n\nDatabase Information:\n{context}\n\nCustomer Question:\n{question}"
 
-        # Get the response from the LLM
-        response = client.chat(
+        # Use the existing history (with system prompt) and the new context-aware prompt
+        messages_for_llm = chat_histories[session_id][:-1]  # All history except the last user message
+        messages_for_llm.append({"role": "user", "content": final_prompt})
+
+        # Get the final response from the LLM
+        final_response = client.chat(
             model=OLLAMA_MODEL,
-            messages=chat_histories[session_id] + [{"role": "user", "content": prompt}]
+            messages=messages_for_llm
         )
-        raw_answer = response['message']['content']
+        answer = final_response['message']['content']
 
-        # Parse the markdown response
-        sections = {}
-        current_section = None
-        for line in raw_answer.split('\n'):
-            line = line.strip()
-            if line.startswith('[') and line.endswith(']'):
-                current_section = line[1:-1].lower().replace(' ', '_')
-                sections[current_section] = []
-            elif current_section:
-                sections[current_section].append(line)
-
-        chat_histories[session_id].append({"role": "assistant", "content": sections})
+        # Add the assistant's answer to the history
+        chat_histories[session_id].append({"role": "assistant", "content": answer})
 
         return JSONResponse(content={"history": chat_histories[session_id], "session_id": session_id})
 
     except Exception as e:
-        return JSONResponse(content={"response": f"An error occurred: {e}", "session_id": session_id})
+        # Ensure session_id is initialized for error response
+        if 'session_id' not in locals() or not session_id:
+            session_id = str(uuid.uuid4())
+
+        error_message = f"An unexpected error occurred: {str(e)}. Please try again."
+        # Avoid adding to a non-existent history
+        if session_id not in chat_histories:
+            chat_histories[session_id] = []
+
+        chat_histories[session_id].append({"role": "assistant", "content": error_message})
+
+        return JSONResponse(content={"history": chat_histories[session_id], "session_id": session_id}, status_code=500)
 
 if __name__ == "__main__":
     import uvicorn

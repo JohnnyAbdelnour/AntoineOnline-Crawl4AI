@@ -5,82 +5,94 @@ document.getElementById('chat-form').addEventListener('submit', async function(e
     const questionInput = document.getElementById('question');
     const question = questionInput.value;
     if (!question.trim()) return;
-    questionInput.value = '';
 
     const chatBody = document.getElementById('chat-body');
 
-    const response = await fetch('/ask', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-            question: question,
-            session_id: sessionId
-        })
-    });
-
-    const data = await response.json();
-    sessionId = data.session_id;
-
-    // Clear the chat body
-    chatBody.innerHTML = '';
-
-    // Render the chat history
-    data.history.forEach(chat => {
-        if (chat.role === 'user') {
-            const userMessageContainer = document.createElement('div');
-            userMessageContainer.className = 'message user';
-            const userMessageBubble = document.createElement('div');
-            userMessageBubble.className = 'message-bubble';
-            userMessageBubble.textContent = chat.content;
-            userMessageContainer.appendChild(userMessageBubble);
-            chatBody.appendChild(userMessageContainer);
-        } else if (chat.role === 'assistant') {
-            const aiMessageContainer = document.createElement('div');
-            aiMessageContainer.className = 'message ai';
-            const aiAvatar = document.createElement('img');
-            aiAvatar.className = 'avatar';
-            aiAvatar.src = 'https://i.imgur.com/7a7yXVB.png'; // A generic AI avatar
-            aiMessageContainer.appendChild(aiAvatar);
-            const aiMessageBubble = document.createElement('div');
-            aiMessageBubble.className = 'message-bubble';
-
-            if (typeof chat.content === 'string') {
-                aiMessageBubble.textContent = chat.content;
-            } else {
-                let html_response = "";
-                if (chat.content.professional_greeting) {
-                    html_response += `<p>${chat.content.professional_greeting.join(' ')}</p>`;
-                }
-                if (chat.content.direct_answer_addressing_the_query) {
-                    html_response += `<p>${chat.content.direct_answer_addressing_the_query.join(' ')}</p>`;
-                }
-                if (chat.content.detailed_product_information_from_database) {
-                    html_response += "<div class='product-info'>";
-                    chat.content.detailed_product_information_from_database.forEach(item => {
-                        if (item.includes('Image URL:')) {
-                            const img_url = item.split('Image URL:')[1].trim();
-                            html_response += `<img src="${img_url}" alt="Product Image">`;
-                        } else {
-                            html_response += `<p>${item}</p>`;
-                        }
-                    });
-                    html_response += "</div>";
-                }
-                if (chat.content.relevant_additional_context) {
-                    html_response += `<p>${chat.content.relevant_additional_context.join(' ')}</p>`;
-                }
-                if (chat.content.professional_closing) {
-                    html_response += `<p>${chat.content.professional_closing.join(' ')}</p>`;
-                }
-                aiMessageBubble.innerHTML = html_response;
-            }
-
-            aiMessageContainer.appendChild(aiMessageBubble);
-            chatBody.appendChild(aiMessageContainer);
-        }
-    });
-
+    // Display user's message immediately
+    appendMessage(chatBody, 'user', question);
+    questionInput.value = '';
     chatBody.scrollTop = chatBody.scrollHeight;
+
+    // Show a typing indicator
+    const typingIndicator = appendMessage(chatBody, 'ai', '...');
+    chatBody.scrollTop = chatBody.scrollHeight;
+
+    try {
+        const payload = { question: question };
+        if (sessionId) {
+            payload.session_id = sessionId;
+        }
+
+        const response = await fetch('/ask', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+
+        if (!response.ok) {
+            const errorData = await response.json();
+            console.error('Server error:', JSON.stringify(errorData, null, 2));
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+
+        const data = await response.json();
+        sessionId = data.session_id;
+
+        // Get the last message from the history, which is the AI's response
+        const aiMessage = data.history[data.history.length - 1];
+
+        // Remove typing indicator
+        chatBody.removeChild(typingIndicator);
+
+        // Display the final AI response
+        if (aiMessage && aiMessage.role === 'assistant') {
+            appendMessage(chatBody, 'ai', aiMessage.content, true);
+        } else {
+            appendMessage(chatBody, 'ai', "Sorry, I couldn't get a response.", false);
+        }
+
+    } catch (error) {
+        console.error('Fetch error:', error);
+        // Remove typing indicator and show error
+        if (typingIndicator) {
+            chatBody.removeChild(typingIndicator);
+        }
+        appendMessage(chatBody, 'ai', 'Error: Could not connect to the server. Please try again.', false);
+    } finally {
+        chatBody.scrollTop = chatBody.scrollHeight;
+    }
 });
+
+function appendMessage(chatBody, role, content, parseMarkdown = false) {
+    const messageContainer = document.createElement('div');
+    messageContainer.className = `message ${role}`;
+
+    if (role === 'ai') {
+        const avatar = document.createElement('img');
+        avatar.className = 'avatar';
+        avatar.src = 'https://i.imgur.com/7a7yXVB.png'; // AI avatar
+        messageContainer.appendChild(avatar);
+    }
+
+    const messageBubble = document.createElement('div');
+    messageBubble.className = 'message-bubble';
+
+    if (parseMarkdown) {
+        messageBubble.innerHTML = marked.parse(content);
+    } else {
+        messageBubble.textContent = content;
+    }
+
+    messageContainer.appendChild(messageBubble);
+    chatBody.appendChild(messageContainer);
+
+    // Find and style images within the bubble
+    const images = messageBubble.querySelectorAll('img');
+    images.forEach(img => {
+        img.style.maxWidth = '100%';
+        img.style.borderRadius = '8px';
+        img.style.marginTop = '10px';
+    });
+
+    return messageContainer;
+}
