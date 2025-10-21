@@ -44,7 +44,6 @@ from crawl4ai import AsyncWebCrawler, BrowserConfig, CrawlerRunConfig, CacheMode
 from crawl4ai.deep_crawling import BFSDeepCrawlStrategy
 from crawl4ai.deep_crawling.filters import FilterChain, URLPatternFilter
 from bs4 import BeautifulSoup
-import urllib.parse
 
 # Pydantic model for product data extraction
 class Product(BaseModel):
@@ -88,7 +87,8 @@ async def discover_product_urls():
                 for item in block['items']:
                     if 'slug' in item and 'id' in item:
                         # Construct the full URL, ensuring no double slashes
-                        event_path = f"/events/{item['id']}/{item['slug']}"
+                        product_url_path = PRODUCT_URL_PATTERN.strip('/')
+                        event_path = f"/{product_url_path}/{item['id']}/{item['slug']}"
                         full_url = f"{base_url}{event_path}"
                         product_urls.add(full_url)
     except (KeyError, TypeError) as e:

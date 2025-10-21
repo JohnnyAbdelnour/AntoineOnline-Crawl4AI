@@ -2,4 +2,3 @@
 __pycache__/
 server.log
 product_urls.txt
-crawled_page.html
