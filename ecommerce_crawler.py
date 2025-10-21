@@ -25,12 +25,12 @@ def get_supabase_client():
 # E-commerce target URL
 ECOMMERCE_TARGET_URL = os.environ.get("ECOMMERCE_TARGET_URL")
 PRODUCTS_TABLE_NAME = os.environ.get("PRODUCTS_TABLE_NAME", "products")
-PRODUCT_URL_PATTERN = os.environ.get("PRODUCT_URL_PATTERN", "/product/")
+PRODUCT_URL_PATTERN = os.environ.get("PRODUCT_URL_PATTERN", "/en/product/")
 CSS_SELECTOR_BASE = os.environ.get("CSS_SELECTOR_BASE", "body")
-CSS_SELECTOR_NAME = os.environ.get("CSS_SELECTOR_NAME", "h1.title")
-CSS_SELECTOR_PRICE = os.environ.get("CSS_SELECTOR_PRICE", "div.product-price, div.product-price span.price")
-CSS_SELECTOR_DESCRIPTION = os.environ.get("CSS_SELECTOR_DESCRIPTION", "div.description, h2.text")
-CSS_SELECTOR_IMAGE_URL = os.environ.get("CSS_SELECTOR_IMAGE_URL", "div.main-image img, .product-gallery-preview img")
+CSS_SELECTOR_NAME = os.environ.get("CSS_SELECTOR_NAME", "h1.title, .product-title")
+CSS_SELECTOR_PRICE = os.environ.get("CSS_SELECTOR_PRICE", "div.product-price, .product-price-container")
+CSS_SELECTOR_DESCRIPTION = os.environ.get("CSS_SELECTOR_DESCRIPTION", "div.description, .product-description")
+CSS_SELECTOR_IMAGE_URL = os.environ.get("CSS_SELECTOR_IMAGE_URL", "div.main-image img, .product-gallery-preview img, .main-image-container img")
 URLS_FILE = "product_urls.txt"
 
 __location__ = os.path.dirname(os.path.abspath(__file__))
@@ -103,8 +103,13 @@ async def discover_product_urls():
         log_memory(prefix="Before crawl: ")
 
         async for result in await crawler.arun(url=ECOMMERCE_TARGET_URL, config=crawl_config):
+            # Exclude category pages and direct image links
             if result.success and PRODUCT_URL_PATTERN in result.url:
-                product_urls.add(result.url)
+                is_image = any(result.url.lower().endswith(ext) for ext in ['.jpg', '.jpeg', '.png', '.gif', '.svg', '.webp'])
+                is_category_page = '/products/' in result.url
+
+                if not is_image and not is_category_page:
+                    product_urls.add(result.url)
 
         print(f"\nFound {len(product_urls)} unique product URLs.")
 
