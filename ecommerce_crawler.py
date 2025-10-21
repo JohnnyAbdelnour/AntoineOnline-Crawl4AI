@@ -103,13 +103,19 @@ async def discover_product_urls():
         log_memory(prefix="Before crawl: ")
 
         async for result in await crawler.arun(url=ECOMMERCE_TARGET_URL, config=crawl_config):
-            # Exclude category pages and direct image links
+            # Perfected discovery logic to ensure only valid product URLs are captured
             if result.success and PRODUCT_URL_PATTERN in result.url:
-                is_image = any(result.url.lower().endswith(ext) for ext in ['.jpg', '.jpeg', '.png', '.gif', '.svg', '.webp'])
-                is_category_page = '/products/' in result.url
+                # Exclude common non-product patterns
+                if any(keyword in result.url for keyword in ['/products', 'filter?']):
+                    continue
 
-                if not is_image and not is_category_page:
-                    product_urls.add(result.url)
+                # Exclude direct image links
+                is_image = any(result.url.lower().endswith(ext) for ext in ['.jpg', '.jpeg', '.png', '.gif', '.svg', '.webp'])
+                if is_image:
+                    continue
+
+                # Add the validated URL
+                product_urls.add(result.url)
 
         print(f"\nFound {len(product_urls)} unique product URLs.")
 
@@ -133,7 +139,8 @@ async def extract_product_data():
         return
 
     with open(URLS_FILE, "r") as f:
-        urls = [line.strip() for line in f.readlines()]
+        # Read and filter out any empty lines
+        urls = [line.strip() for line in f.readlines() if line.strip()]
 
     print(f"Found {len(urls)} URLs to process.")
 
