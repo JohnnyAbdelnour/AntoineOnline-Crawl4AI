@@ -43,6 +43,8 @@ sys.path.append(parent_dir)
 from crawl4ai import AsyncWebCrawler, BrowserConfig, CrawlerRunConfig, CacheMode, JsonCssExtractionStrategy
 from crawl4ai.deep_crawling import BFSDeepCrawlStrategy
 from crawl4ai.deep_crawling.filters import FilterChain, URLPatternFilter
+from bs4 import BeautifulSoup
+import urllib.parse
 
 # Pydantic model for product data extraction
 class Product(BaseModel):
@@ -53,83 +55,51 @@ class Product(BaseModel):
 
 async def discover_product_urls():
     print("\n=== Discovering Product URLs ===")
-
-    # We'll keep track of peak memory usage across all tasks
-    peak_memory = 0
-    process = psutil.Process(os.getpid())
-
-    def log_memory(prefix: str = ""):
-        nonlocal peak_memory
-        current_mem = process.memory_info().rss  # in bytes
-        if current_mem > peak_memory:
-            peak_memory = current_mem
-        print(f"{prefix} Current Memory: {current_mem // (1024 * 1024)} MB, Peak: {peak_memory // (1024 * 1024)} MB")
-
-    # Minimal browser config
     browser_config = BrowserConfig(
         headless=True,
         verbose=False,
         extra_args=["--disable-gpu", "--disable-dev-shm-usage", "--no-sandbox"],
     )
-
-    # URL filtering to focus on valid HTTP/HTTPS links
-    filter_chain = FilterChain([
-        URLPatternFilter(
-            patterns=["http://*", "https://*"],
-        )
-    ])
-
-    # Deep crawling strategy
-    deep_crawl_strategy = BFSDeepCrawlStrategy(
-        max_depth=10,  # Limit depth to 10 to avoid infinite loops, but still get deep enough
-        max_pages=1100000,
-        include_external=False,
-        filter_chain=filter_chain,
-    )
-
-    crawl_config = CrawlerRunConfig(
-        cache_mode=CacheMode.BYPASS,
-        deep_crawl_strategy=deep_crawl_strategy,
-        stream=True,
-        page_timeout=120000,
-    )
-
-    # Create the crawler instance
     crawler = AsyncWebCrawler(config=browser_config)
     await crawler.start()
+    result = await crawler.arun(url=ECOMMERCE_TARGET_URL, config=CrawlerRunConfig(cache_mode=CacheMode.BYPASS))
+    await crawler.close()
 
+    if not result.success:
+        print(f"Error crawling {ECOMMERCE_TARGET_URL}: {result.error_message}")
+        return
+
+    soup = BeautifulSoup(result.html, 'html.parser')
+    script_tag = soup.find('script', {'id': '__NEXT_DATA__'})
+    if not script_tag:
+        print("Could not find the __NEXT_DATA__ script tag.")
+        return
+
+    json_data = json.loads(script_tag.string)
     product_urls = set()
+
+    base_url = ECOMMERCE_TARGET_URL.strip('/')
+
+    # Correctly navigate the JSON structure to find event items
     try:
-        log_memory(prefix="Before crawl: ")
+        blocks = json_data.get('props', {}).get('pageProps', {}).get('homepageData', {}).get('blocks', [])
+        for block in blocks:
+            if 'items' in block:
+                for item in block['items']:
+                    if 'slug' in item and 'id' in item:
+                        # Construct the full URL, ensuring no double slashes
+                        event_path = f"/events/{item['id']}/{item['slug']}"
+                        full_url = f"{base_url}{event_path}"
+                        product_urls.add(full_url)
+    except (KeyError, TypeError) as e:
+        print(f"Error navigating JSON data: {e}")
+        return
 
-        async for result in await crawler.arun(url=ECOMMERCE_TARGET_URL, config=crawl_config):
-            # Perfected discovery logic to ensure only valid product URLs are captured
-            if result.success and PRODUCT_URL_PATTERN in result.url:
-                # Exclude common non-product patterns
-                if any(keyword in result.url for keyword in ['/products', 'filter?']):
-                    continue
-
-                # Exclude direct image links
-                is_image = any(result.url.lower().endswith(ext) for ext in ['.jpg', '.jpeg', '.png', '.gif', '.svg', '.webp'])
-                if is_image:
-                    continue
-
-                # Add the validated URL
-                product_urls.add(result.url)
-
-        print(f"\nFound {len(product_urls)} unique product URLs.")
-
-        with open(URLS_FILE, "w") as f:
-            for url in product_urls:
-                f.write(f"{url}\n")
-        print(f"Saved product URLs to {URLS_FILE}")
-
-    finally:
-        print("\nClosing crawler...")
-        await crawler.close()
-        # Final memory log
-        log_memory(prefix="Final: ")
-        print(f"\nPeak memory usage (MB): {peak_memory // (1024 * 1024)}")
+    print(f"\nFound {len(product_urls)} unique product URLs.")
+    with open(URLS_FILE, "w") as f:
+        for url in product_urls:
+            f.write(f"{url}\n")
+    print(f"Saved product URLs to {URLS_FILE}")
 
 async def extract_product_data():
     print("\n=== Extracting Product Data ===")

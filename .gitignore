@@ -1,3 +1,5 @@
 .env
 __pycache__/
-server.logproduct_urls.txt
+server.log
+product_urls.txt
+crawled_page.html

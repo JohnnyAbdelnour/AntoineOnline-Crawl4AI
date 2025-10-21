@@ -7,3 +7,4 @@ fastapi
 uvicorn
 ollama
 python-multipart
+beautifulsoup4
