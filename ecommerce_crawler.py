@@ -25,12 +25,12 @@ def get_supabase_client():
 # E-commerce target URL
 ECOMMERCE_TARGET_URL = os.environ.get("ECOMMERCE_TARGET_URL")
 PRODUCTS_TABLE_NAME = os.environ.get("PRODUCTS_TABLE_NAME", "products")
-PRODUCT_URL_PATTERN = os.environ.get("PRODUCT_URL_PATTERN", "/product/")
+PRODUCT_URL_PATTERN = os.environ.get("PRODUCT_URL_PATTERN", "/en/product/")
 CSS_SELECTOR_BASE = os.environ.get("CSS_SELECTOR_BASE", "body")
-CSS_SELECTOR_NAME = os.environ.get("CSS_SELECTOR_NAME", "h1.title")
-CSS_SELECTOR_PRICE = os.environ.get("CSS_SELECTOR_PRICE", "div.product-price")
-CSS_SELECTOR_DESCRIPTION = os.environ.get("CSS_SELECTOR_DESCRIPTION", "h2.text")
-CSS_SELECTOR_IMAGE_URL = os.environ.get("CSS_SELECTOR_IMAGE_URL", "div.main-image img")
+CSS_SELECTOR_NAME = os.environ.get("CSS_SELECTOR_NAME", "h1.title, .product-title")
+CSS_SELECTOR_PRICE = os.environ.get("CSS_SELECTOR_PRICE", "div.product-price, .product-price-container")
+CSS_SELECTOR_DESCRIPTION = os.environ.get("CSS_SELECTOR_DESCRIPTION", "div.description, .product-description")
+CSS_SELECTOR_IMAGE_URL = os.environ.get("CSS_SELECTOR_IMAGE_URL", "div.main-image img, .product-gallery-preview img, .main-image-container img")
 URLS_FILE = "product_urls.txt"
 
 __location__ = os.path.dirname(os.path.abspath(__file__))
@@ -103,7 +103,18 @@ async def discover_product_urls():
         log_memory(prefix="Before crawl: ")
 
         async for result in await crawler.arun(url=ECOMMERCE_TARGET_URL, config=crawl_config):
+            # Perfected discovery logic to ensure only valid product URLs are captured
             if result.success and PRODUCT_URL_PATTERN in result.url:
+                # Exclude common non-product patterns
+                if any(keyword in result.url for keyword in ['/products', 'filter?']):
+                    continue
+
+                # Exclude direct image links
+                is_image = any(result.url.lower().endswith(ext) for ext in ['.jpg', '.jpeg', '.png', '.gif', '.svg', '.webp'])
+                if is_image:
+                    continue
+
+                # Add the validated URL
                 product_urls.add(result.url)
 
         print(f"\nFound {len(product_urls)} unique product URLs.")
@@ -128,7 +139,8 @@ async def extract_product_data():
         return
 
     with open(URLS_FILE, "r") as f:
-        urls = [line.strip() for line in f.readlines()]
+        # Read and filter out any empty lines
+        urls = [line.strip() for line in f.readlines() if line.strip()]
 
     print(f"Found {len(urls)} URLs to process.")
 
@@ -164,22 +176,30 @@ async def extract_product_data():
             result = await crawler.arun(url=url, config=crawl_config)
             if result.success and result.extracted_content:
                 try:
+                    product_data_list = json.loads(result.extracted_content)
+                    if not product_data_list:
+                        print(f"Warning: No data extracted for {url}, skipping.")
+                        fail_count += 1
+                        continue
                     # Validate the extracted data against the Pydantic model
-                    product_data = json.loads(result.extracted_content)[0]
+                    product_data = product_data_list[0]
                     # The price is extracted as a string like "3.57 USD", so we need to parse it
                     if 'price' in product_data and isinstance(product_data['price'], str):
                         product_data['price'] = float(product_data['price'].replace('USD', '').strip())
 
                     validated_product = Product(**product_data)
-                    product_data_validated = validated_product.dict()
+                    product_data_validated = validated_product.model_dump()
                     product_data_validated['url'] = url
                     products_batch.append(product_data_validated)
 
                     if len(products_batch) >= batch_size:
                         client = get_supabase_client()
-                        data, count = client.table(PRODUCTS_TABLE_NAME).insert(products_batch).execute()
-                        success_count += len(products_batch)
-                        print(f"Inserted batch of {len(products_batch)} products.")
+                        # De-duplicate the batch before upserting
+                        unique_products = {p['name']: p for p in products_batch}.values()
+                        # Upsert instead of insert
+                        data, count = client.table(PRODUCTS_TABLE_NAME).upsert(list(unique_products), on_conflict='name').execute()
+                        success_count += len(unique_products)
+                        print(f"Upserted batch of {len(unique_products)} products.")
                         products_batch = []
 
                 except (json.JSONDecodeError, IndexError, ValidationError, ValueError) as e:
@@ -193,9 +213,12 @@ async def extract_product_data():
         # Insert any remaining products in the last batch
         if products_batch:
             client = get_supabase_client()
-            data, count = client.table(PRODUCTS_TABLE_NAME).insert(products_batch).execute()
-            success_count += len(products_batch)
-            print(f"Inserted final batch of {len(products_batch)} products.")
+            # De-duplicate the batch before upserting
+            unique_products = {p['name']: p for p in products_batch}.values()
+            # Upsert instead of insert
+            data, count = client.table(PRODUCTS_TABLE_NAME).upsert(list(unique_products), on_conflict='name').execute()
+            success_count += len(unique_products)
+            print(f"Upserted final batch of {len(unique_products)} products.")
 
         print(f"\nSummary:")
         print(f"  - Successfully extracted and stored: {success_count}")
