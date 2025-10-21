@@ -177,9 +177,10 @@ async def extract_product_data():
 
                     if len(products_batch) >= batch_size:
                         client = get_supabase_client()
-                        data, count = client.table(PRODUCTS_TABLE_NAME).insert(products_batch).execute()
+                        # Upsert instead of insert
+                        data, count = client.table(PRODUCTS_TABLE_NAME).upsert(products_batch, on_conflict='name').execute()
                         success_count += len(products_batch)
-                        print(f"Inserted batch of {len(products_batch)} products.")
+                        print(f"Upserted batch of {len(products_batch)} products.")
                         products_batch = []
 
                 except (json.JSONDecodeError, IndexError, ValidationError, ValueError) as e:
@@ -193,9 +194,10 @@ async def extract_product_data():
         # Insert any remaining products in the last batch
         if products_batch:
             client = get_supabase_client()
-            data, count = client.table(PRODUCTS_TABLE_NAME).insert(products_batch).execute()
+            # Upsert instead of insert
+            data, count = client.table(PRODUCTS_TABLE_NAME).upsert(products_batch, on_conflict='name').execute()
             success_count += len(products_batch)
-            print(f"Inserted final batch of {len(products_batch)} products.")
+            print(f"Upserted final batch of {len(products_batch)} products.")
 
         print(f"\nSummary:")
         print(f"  - Successfully extracted and stored: {success_count}")
