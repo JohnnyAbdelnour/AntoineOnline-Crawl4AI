@@ -28,9 +28,9 @@ PRODUCTS_TABLE_NAME = os.environ.get("PRODUCTS_TABLE_NAME", "products")
 PRODUCT_URL_PATTERN = os.environ.get("PRODUCT_URL_PATTERN", "/product/")
 CSS_SELECTOR_BASE = os.environ.get("CSS_SELECTOR_BASE", "body")
 CSS_SELECTOR_NAME = os.environ.get("CSS_SELECTOR_NAME", "h1.title")
-CSS_SELECTOR_PRICE = os.environ.get("CSS_SELECTOR_PRICE", "div.product-price")
-CSS_SELECTOR_DESCRIPTION = os.environ.get("CSS_SELECTOR_DESCRIPTION", "h2.text")
-CSS_SELECTOR_IMAGE_URL = os.environ.get("CSS_SELECTOR_IMAGE_URL", "div.main-image img")
+CSS_SELECTOR_PRICE = os.environ.get("CSS_SELECTOR_PRICE", "div.product-price, div.product-price span.price")
+CSS_SELECTOR_DESCRIPTION = os.environ.get("CSS_SELECTOR_DESCRIPTION", "div.description, h2.text")
+CSS_SELECTOR_IMAGE_URL = os.environ.get("CSS_SELECTOR_IMAGE_URL", "div.main-image img, .product-gallery-preview img")
 URLS_FILE = "product_urls.txt"
 
 __location__ = os.path.dirname(os.path.abspath(__file__))
@@ -182,10 +182,12 @@ async def extract_product_data():
 
                     if len(products_batch) >= batch_size:
                         client = get_supabase_client()
+                        # De-duplicate the batch before upserting
+                        unique_products = {p['name']: p for p in products_batch}.values()
                         # Upsert instead of insert
-                        data, count = client.table(PRODUCTS_TABLE_NAME).upsert(products_batch, on_conflict='name').execute()
-                        success_count += len(products_batch)
-                        print(f"Upserted batch of {len(products_batch)} products.")
+                        data, count = client.table(PRODUCTS_TABLE_NAME).upsert(list(unique_products), on_conflict='name').execute()
+                        success_count += len(unique_products)
+                        print(f"Upserted batch of {len(unique_products)} products.")
                         products_batch = []
 
                 except (json.JSONDecodeError, IndexError, ValidationError, ValueError) as e:
@@ -199,10 +201,12 @@ async def extract_product_data():
         # Insert any remaining products in the last batch
         if products_batch:
             client = get_supabase_client()
+            # De-duplicate the batch before upserting
+            unique_products = {p['name']: p for p in products_batch}.values()
             # Upsert instead of insert
-            data, count = client.table(PRODUCTS_TABLE_NAME).upsert(products_batch, on_conflict='name').execute()
-            success_count += len(products_batch)
-            print(f"Upserted final batch of {len(products_batch)} products.")
+            data, count = client.table(PRODUCTS_TABLE_NAME).upsert(list(unique_products), on_conflict='name').execute()
+            success_count += len(unique_products)
+            print(f"Upserted final batch of {len(unique_products)} products.")
 
         print(f"\nSummary:")
         print(f"  - Successfully extracted and stored: {success_count}")
