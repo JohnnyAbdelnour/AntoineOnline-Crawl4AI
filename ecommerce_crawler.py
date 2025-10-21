@@ -164,14 +164,19 @@ async def extract_product_data():
             result = await crawler.arun(url=url, config=crawl_config)
             if result.success and result.extracted_content:
                 try:
+                    product_data_list = json.loads(result.extracted_content)
+                    if not product_data_list:
+                        print(f"Warning: No data extracted for {url}, skipping.")
+                        fail_count += 1
+                        continue
                     # Validate the extracted data against the Pydantic model
-                    product_data = json.loads(result.extracted_content)[0]
+                    product_data = product_data_list[0]
                     # The price is extracted as a string like "3.57 USD", so we need to parse it
                     if 'price' in product_data and isinstance(product_data['price'], str):
                         product_data['price'] = float(product_data['price'].replace('USD', '').strip())
 
                     validated_product = Product(**product_data)
-                    product_data_validated = validated_product.dict()
+                    product_data_validated = validated_product.model_dump()
                     product_data_validated['url'] = url
                     products_batch.append(product_data_validated)
 
