@@ -162,7 +162,6 @@ async def extract_event_data():
 
                     validated_event = Event(**event_data)
                     event_data_validated = validated_event.model_dump()
-                    event_data_validated['url'] = url
                     events_batch.append(event_data_validated)
 
                     if len(events_batch) >= batch_size:
