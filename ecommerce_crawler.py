@@ -25,7 +25,7 @@ def get_supabase_client():
 # E-commerce target URL
 ECOMMERCE_TARGET_URL = os.environ.get("ECOMMERCE_TARGET_URL")
 PRODUCTS_TABLE_NAME = os.environ.get("PRODUCTS_TABLE_NAME", "products")
-PRODUCT_URL_PATTERN = os.environ.get("PRODUCT_URL_PATTERN", "/en/product/")
+PRODUCT_URL_PATTERN = os.environ.get("PRODUCT_URL_PATTERN", "/events/")
 URLS_FILE = "product_urls.txt"
 
 __location__ = os.path.dirname(os.path.abspath(__file__))
