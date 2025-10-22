@@ -46,6 +46,7 @@ class Category(BaseModel):
     category_price: float = Field(..., description="The price of the category")
 
 class Event(BaseModel):
+    id: str = Field(..., description="The unique identifier of the event")
     event_name: str = Field(..., description="The name of the event")
     categories: List[Category] = Field(..., description="A list of categories for the event")
     description: Optional[str] = Field(None, description="The description of the event")
@@ -135,6 +136,7 @@ async def extract_event_data():
                     json_data = json.loads(script_tag.string)
                     product_data = json_data.get('props', {}).get('pageProps', {}).get('product', {})
 
+                    id = product_data.get('id')
                     event_name = product_data.get('name')
                     description = product_data.get('text')
                     image_url = product_data.get('media', {}).get('image')
@@ -153,6 +155,7 @@ async def extract_event_data():
                         continue
 
                     event_data = {
+                        "id": id,
                         "event_name": event_name,
                         "categories": categories,
                         "description": description,
@@ -166,8 +169,8 @@ async def extract_event_data():
 
                     if len(events_batch) >= batch_size:
                         client = get_supabase_client()
-                        unique_events = {p['event_name']: p for p in events_batch}.values()
-                        data, count = client.table(PRODUCTS_TABLE_NAME).upsert(list(unique_events), on_conflict='event_name').execute()
+                        unique_events = {p['id']: p for p in events_batch}.values()
+                        data, count = client.table(PRODUCTS_TABLE_NAME).upsert(list(unique_events), on_conflict='id').execute()
                         success_count += len(unique_events)
                         print(f"Upserted batch of {len(unique_events)} events.")
                         events_batch = []
@@ -181,8 +184,8 @@ async def extract_event_data():
 
         if events_batch:
             client = get_supabase_client()
-            unique_events = {p['event_name']: p for p in events_batch}.values()
-            data, count = client.table(PRODUCTS_TABLE_NAME).upsert(list(unique_events), on_conflict='event_name').execute()
+            unique_events = {p['id']: p for p in events_batch}.values()
+            data, count = client.table(PRODUCTS_TABLE_NAME).upsert(list(unique_events), on_conflict='id').execute()
             success_count += len(unique_events)
             print(f"Upserted final batch of {len(unique_events)} events.")
 
