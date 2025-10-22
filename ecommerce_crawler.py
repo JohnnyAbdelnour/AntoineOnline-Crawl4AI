@@ -26,11 +26,6 @@ def get_supabase_client():
 ECOMMERCE_TARGET_URL = os.environ.get("ECOMMERCE_TARGET_URL")
 PRODUCTS_TABLE_NAME = os.environ.get("PRODUCTS_TABLE_NAME", "products")
 PRODUCT_URL_PATTERN = os.environ.get("PRODUCT_URL_PATTERN", "/en/product/")
-CSS_SELECTOR_BASE = os.environ.get("CSS_SELECTOR_BASE", "body")
-CSS_SELECTOR_NAME = os.environ.get("CSS_SELECTOR_NAME", "h1.title, .product-title")
-CSS_SELECTOR_PRICE = os.environ.get("CSS_SELECTOR_PRICE", "div.product-price, .product-price-container")
-CSS_SELECTOR_DESCRIPTION = os.environ.get("CSS_SELECTOR_DESCRIPTION", "div.description, .product-description")
-CSS_SELECTOR_IMAGE_URL = os.environ.get("CSS_SELECTOR_IMAGE_URL", "div.main-image img, .product-gallery-preview img, .main-image-container img")
 URLS_FILE = "product_urls.txt"
 
 __location__ = os.path.dirname(os.path.abspath(__file__))
@@ -45,12 +40,17 @@ from crawl4ai.deep_crawling import BFSDeepCrawlStrategy
 from crawl4ai.deep_crawling.filters import FilterChain, URLPatternFilter
 from bs4 import BeautifulSoup
 
-# Pydantic model for product data extraction
-class Product(BaseModel):
-    name: str = Field(..., description="The name of the product")
-    price: float = Field(..., description="The price of the product")
-    description: Optional[str] = Field(None, description="The description of the product")
-    image_url: Optional[str] = Field(None, description="The URL of the product image")
+# Pydantic model for event data extraction
+class Category(BaseModel):
+    category_name: str = Field(..., description="The name of the category")
+    category_price: float = Field(..., description="The price of the category")
+
+class Event(BaseModel):
+    event_name: str = Field(..., description="The name of the event")
+    categories: List[Category] = Field(..., description="A list of categories for the event")
+    description: Optional[str] = Field(None, description="The description of the event")
+    image_url: Optional[str] = Field(None, description="The URL of the event image")
+    organizer_name: Optional[str] = Field(None, description="The name of the event organizer")
 
 async def discover_product_urls():
     print("\n=== Discovering Product URLs ===")
@@ -101,94 +101,91 @@ async def discover_product_urls():
             f.write(f"{url}\n")
     print(f"Saved product URLs to {URLS_FILE}")
 
-async def extract_product_data():
-    print("\n=== Extracting Product Data ===")
+async def extract_event_data():
+    print("\n=== Extracting Event Data ===")
 
     if not os.path.exists(URLS_FILE):
         print(f"Error: {URLS_FILE} not found. Please run the 'discover' mode first.")
         return
 
     with open(URLS_FILE, "r") as f:
-        # Read and filter out any empty lines
         urls = [line.strip() for line in f.readlines() if line.strip()]
 
     print(f"Found {len(urls)} URLs to process.")
 
-    # CSS selectors for product data
-    extraction_schema = {
-        "baseSelector": CSS_SELECTOR_BASE,
-        "fields": [
-            {"name": "name", "selector": CSS_SELECTOR_NAME, "type": "text"},
-            {"name": "price", "selector": CSS_SELECTOR_PRICE, "type": "text"},
-            {"name": "description", "selector": CSS_SELECTOR_DESCRIPTION, "type": "text"},
-            {"name": "image_url", "selector": CSS_SELECTOR_IMAGE_URL, "type": "attribute", "attribute": "src"}
-        ]
-    }
-
-    # Extraction strategy
-    extraction_strategy = JsonCssExtractionStrategy(schema=extraction_schema)
-
-    crawl_config = CrawlerRunConfig(
-        cache_mode=CacheMode.BYPASS,
-        extraction_strategy=extraction_strategy,
-    )
-
-    # Create the crawler instance
     crawler = AsyncWebCrawler()
     await crawler.start()
 
-    products_batch = []
+    events_batch = []
     batch_size = 50
     success_count = 0
     fail_count = 0
     try:
         for url in urls:
-            result = await crawler.arun(url=url, config=crawl_config)
-            if result.success and result.extracted_content:
+            result = await crawler.arun(url=url, config=CrawlerRunConfig(cache_mode=CacheMode.BYPASS))
+            if result.success and result.html:
                 try:
-                    product_data_list = json.loads(result.extracted_content)
-                    if not product_data_list:
-                        print(f"Warning: No data extracted for {url}, skipping.")
+                    soup = BeautifulSoup(result.html, 'html.parser')
+                    script_tag = soup.find('script', {'id': '__NEXT_DATA__'})
+                    if not script_tag:
+                        print(f"Warning: No __NEXT_DATA__ script tag found for {url}, skipping.")
                         fail_count += 1
                         continue
-                    # Validate the extracted data against the Pydantic model
-                    product_data = product_data_list[0]
-                    # The price is extracted as a string like "3.57 USD", so we need to parse it
-                    if 'price' in product_data and isinstance(product_data['price'], str):
-                        product_data['price'] = float(product_data['price'].replace('USD', '').strip())
 
-                    validated_product = Product(**product_data)
-                    product_data_validated = validated_product.model_dump()
-                    product_data_validated['url'] = url
-                    products_batch.append(product_data_validated)
+                    json_data = json.loads(script_tag.string)
+                    product_data = json_data.get('props', {}).get('pageProps', {}).get('product', {})
 
-                    if len(products_batch) >= batch_size:
+                    event_name = product_data.get('name')
+                    description = product_data.get('text')
+                    image_url = product_data.get('media', {}).get('image')
+                    organizer_name = product_data.get('organizer', {}).get('name')
+
+                    categories = []
+                    for cat in product_data.get('categories', []):
+                        category_name = cat.get('name')
+                        category_price = cat.get('price', {}).get('USD', {}).get('amount')
+                        if category_name and category_price is not None:
+                            categories.append({"category_name": category_name, "category_price": category_price})
+
+                    if not event_name or not categories:
+                        print(f"Warning: Missing essential data for {url}, skipping.")
+                        fail_count += 1
+                        continue
+
+                    event_data = {
+                        "event_name": event_name,
+                        "categories": categories,
+                        "description": description,
+                        "image_url": image_url,
+                        "organizer_name": organizer_name
+                    }
+
+                    validated_event = Event(**event_data)
+                    event_data_validated = validated_event.model_dump()
+                    event_data_validated['url'] = url
+                    events_batch.append(event_data_validated)
+
+                    if len(events_batch) >= batch_size:
                         client = get_supabase_client()
-                        # De-duplicate the batch before upserting
-                        unique_products = {p['name']: p for p in products_batch}.values()
-                        # Upsert instead of insert
-                        data, count = client.table(PRODUCTS_TABLE_NAME).upsert(list(unique_products), on_conflict='name').execute()
-                        success_count += len(unique_products)
-                        print(f"Upserted batch of {len(unique_products)} products.")
-                        products_batch = []
+                        unique_events = {p['event_name']: p for p in events_batch}.values()
+                        data, count = client.table(PRODUCTS_TABLE_NAME).upsert(list(unique_events), on_conflict='event_name').execute()
+                        success_count += len(unique_events)
+                        print(f"Upserted batch of {len(unique_events)} events.")
+                        events_batch = []
 
-                except (json.JSONDecodeError, IndexError, ValidationError, ValueError) as e:
-                    print(f"Error validating or parsing extracted content for {url}: {e}")
+                except (json.JSONDecodeError, KeyError, ValidationError) as e:
+                    print(f"Error processing data for {url}: {e}")
                     fail_count += 1
-
             elif not result.success:
                 print(f"Error crawling {url}: {result.error_message}")
                 fail_count += 1
 
-        # Insert any remaining products in the last batch
-        if products_batch:
+        if events_batch:
             client = get_supabase_client()
-            # De-duplicate the batch before upserting
-            unique_products = {p['name']: p for p in products_batch}.values()
-            # Upsert instead of insert
-            data, count = client.table(PRODUCTS_TABLE_NAME).upsert(list(unique_products), on_conflict='name').execute()
-            success_count += len(unique_products)
-            print(f"Upserted final batch of {len(unique_products)} products.")
+            unique_events = {p['event_name']: p for p in events_batch}.values()
+            data, count = client.table(PRODUCTS_TABLE_NAME).upsert(list(unique_events), on_conflict='event_name').execute()
+            success_count += len(unique_events)
+            print(f"Upserted final batch of {len(unique_events)} events.")
 
         print(f"\nSummary:")
         print(f"  - Successfully extracted and stored: {success_count}")
@@ -209,7 +206,7 @@ async def main():
             return
         await discover_product_urls()
     elif args.mode == "extract":
-        await extract_product_data()
+        await extract_event_data()
 
 
 if __name__ == "__main__":
