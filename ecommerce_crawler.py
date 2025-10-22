@@ -134,7 +134,8 @@ async def extract_event_data():
                         continue
 
                     json_data = json.loads(script_tag.string)
-                    product_data = json_data.get('props', {}).get('pageProps', {}).get('product', {})
+                    page_props = json_data.get('props', {}).get('pageProps', {})
+                    product_data = page_props.get('product', page_props.get('page', {}))
 
                     id = product_data.get('id')
                     event_name = product_data.get('name')
