@@ -4,6 +4,7 @@ import psutil
 import asyncio
 import json
 import argparse
+import random
 from supabase import create_client, Client
 from dotenv import load_dotenv
 from pydantic import BaseModel, Field, ValidationError
@@ -70,6 +71,7 @@ async def discover_product_urls():
         headless=True,
         verbose=False,
         user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+        proxy=os.environ.get("PROXY_URL"),
         extra_args=["--disable-gpu", "--disable-dev-shm-usage", "--no-sandbox"],
     )
 
@@ -103,8 +105,8 @@ async def discover_product_urls():
     try:
         log_memory(prefix="Before crawl: ")
 
-        max_retries = 3
-        retry_delay = 5  # seconds
+        max_retries = 5
+        base_delay = 5  # seconds
 
         for i in range(max_retries):
             try:
@@ -122,8 +124,16 @@ async def discover_product_urls():
 
                         # Add the validated URL
                         product_urls.add(result.url)
+
+                    # Introduce a random delay to mimic human behavior
+                    await asyncio.sleep(random.uniform(1, 3))
                 break  # If the loop completes without errors, break out of the retry loop
             except Exception as e:
+                if i == max_retries - 1:
+                    print(f"Max retries reached. Could not complete the crawl. Last error: {e}")
+                    break
+
+                retry_delay = base_delay * (2 ** i)
                 print(f"An error occurred: {e}. Retrying in {retry_delay} seconds...")
                 await asyncio.sleep(retry_delay)
 
