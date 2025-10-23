@@ -149,12 +149,13 @@ async def extract_event_data():
                     schedule = product_data.get('schedule', {}).get('label')
 
                     categories = []
-                    for cat in product_data.get('categories', []):
-                        category_name = cat.get('name')
-                        category_price = cat.get('price', {}).get('USD', {}).get('amount')
-                        if category_name and category_price is not None:
-                            categories.append({"category_name": category_name, "category_price": category_price})
-
+                    categories_data = product_data.get('categories', [])
+                    if categories_data:
+                        for cat in categories_data:
+                            category_name = cat.get('name')
+                            category_price = cat.get('price', {}).get('USD', {}).get('amount')
+                            if category_name and category_price is not None:
+                                categories.append({"category_name": category_name, "category_price": category_price})
                     if not event_name:
                         print(f"Warning: Missing essential data for {url}, skipping.")
                         fail_count += 1
