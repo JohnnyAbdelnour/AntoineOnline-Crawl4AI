@@ -46,7 +46,7 @@ class Category(BaseModel):
     category_price: float = Field(..., description="The price of the category")
 
 class Event(BaseModel):
-    id: str = Field(..., description="The unique identifier of the event")
+    id: int = Field(..., description="The unique identifier of the event")
     event_name: str = Field(..., description="The name of the event")
     categories: List[Category] = Field(..., description="A list of categories for the event")
     description: Optional[str] = Field(None, description="The description of the event")
@@ -135,7 +135,10 @@ async def extract_event_data():
 
                     json_data = json.loads(script_tag.string)
                     page_props = json_data.get('props', {}).get('pageProps', {})
-                    product_data = page_props.get('product', page_props.get('page', {}))
+                    product_data = page_props.get('product')
+                    if not product_data:
+                        page_data = page_props.get('page', {})
+                        product_data = page_data.get('product', page_data)
 
                     id = product_data.get('id')
                     event_name = product_data.get('name')
@@ -166,6 +169,7 @@ async def extract_event_data():
 
                     validated_event = Event(**event_data)
                     event_data_validated = validated_event.model_dump()
+                    event_data_validated['url'] = url
                     events_batch.append(event_data_validated)
 
                     if len(events_batch) >= batch_size:
