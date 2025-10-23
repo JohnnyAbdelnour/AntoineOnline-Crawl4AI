@@ -94,7 +94,7 @@ async def discover_product_urls():
         cache_mode=CacheMode.BYPASS,
         deep_crawl_strategy=deep_crawl_strategy,
         stream=True,
-        page_timeout=120000,
+        page_timeout=int(os.environ.get("PAGE_TIMEOUT", 180000)),
     )
 
     # Create the crawler instance
@@ -105,7 +105,7 @@ async def discover_product_urls():
     try:
         log_memory(prefix="Before crawl: ")
 
-        max_retries = 5
+        max_retries = int(os.environ.get("MAX_RETRIES", 5))
         base_delay = 5  # seconds
 
         for i in range(max_retries):
@@ -192,9 +192,27 @@ async def extract_product_data():
     success_count = 0
     fail_count = 0
     try:
+        max_retries = int(os.environ.get("MAX_RETRIES", 5))
+        base_delay = 5  # seconds
+
         for url in urls:
-            result = await crawler.arun(url=url, config=crawl_config)
-            if result.success and result.extracted_content:
+            result = None
+            for i in range(max_retries):
+                try:
+                    result = await crawler.arun(url=url, config=crawl_config)
+                    if result.success:
+                        break  # Break retry loop on success
+                except Exception as e:
+                    if i == max_retries - 1:
+                        print(f"Max retries reached for {url}. Last error: {e}")
+                        result = None  # Ensure result is None after max retries
+                        break
+
+                    retry_delay = base_delay * (2 ** i)
+                    print(f"Error crawling {url}: {e}. Retrying in {retry_delay} seconds...")
+                    await asyncio.sleep(retry_delay)
+
+            if result and result.success and result.extracted_content:
                 try:
                     product_data_list = json.loads(result.extracted_content)
                     if not product_data_list:
