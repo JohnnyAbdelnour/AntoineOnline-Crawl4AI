@@ -52,6 +52,7 @@ class Event(BaseModel):
     description: Optional[str] = Field(None, description="The description of the event")
     image_url: Optional[str] = Field(None, description="The URL of the event image")
     organizer_name: Optional[str] = Field(None, description="The name of the event organizer")
+    schedule: Optional[str] = Field(None, description="The schedule of the event")
 
 async def discover_product_urls():
     print("\n=== Discovering Product URLs ===")
@@ -145,6 +146,7 @@ async def extract_event_data():
                     description = product_data.get('text')
                     image_url = product_data.get('media', {}).get('image')
                     organizer_name = product_data.get('organizer', {}).get('name')
+                    schedule = product_data.get('schedule', {}).get('label')
 
                     categories = []
                     for cat in product_data.get('categories', []):
@@ -153,7 +155,7 @@ async def extract_event_data():
                         if category_name and category_price is not None:
                             categories.append({"category_name": category_name, "category_price": category_price})
 
-                    if not event_name or not categories:
+                    if not event_name:
                         print(f"Warning: Missing essential data for {url}, skipping.")
                         fail_count += 1
                         continue
@@ -164,7 +166,8 @@ async def extract_event_data():
                         "categories": categories,
                         "description": description,
                         "image_url": image_url,
-                        "organizer_name": organizer_name
+                        "organizer_name": organizer_name,
+                        "schedule": schedule
                     }
 
                     validated_event = Event(**event_data)
