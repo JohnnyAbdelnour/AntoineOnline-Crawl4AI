@@ -69,6 +69,7 @@ async def discover_product_urls():
     browser_config = BrowserConfig(
         headless=True,
         verbose=False,
+        user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
         extra_args=["--disable-gpu", "--disable-dev-shm-usage", "--no-sandbox"],
     )
 
@@ -102,20 +103,29 @@ async def discover_product_urls():
     try:
         log_memory(prefix="Before crawl: ")
 
-        async for result in await crawler.arun(url=ECOMMERCE_TARGET_URL, config=crawl_config):
-            # Perfected discovery logic to ensure only valid product URLs are captured
-            if result.success and PRODUCT_URL_PATTERN in result.url:
-                # Exclude common non-product patterns
-                if any(keyword in result.url for keyword in ['/products', 'filter?']):
-                    continue
+        max_retries = 3
+        retry_delay = 5  # seconds
 
-                # Exclude direct image links
-                is_image = any(result.url.lower().endswith(ext) for ext in ['.jpg', '.jpeg', '.png', '.gif', '.svg', '.webp'])
-                if is_image:
-                    continue
+        for i in range(max_retries):
+            try:
+                async for result in await crawler.arun(url=ECOMMERCE_TARGET_URL, config=crawl_config):
+                    # Perfected discovery logic to ensure only valid product URLs are captured
+                    if result.success and PRODUCT_URL_PATTERN in result.url:
+                        # Exclude common non-product patterns
+                        if any(keyword in result.url for keyword in ['/products', 'filter?']):
+                            continue
 
-                # Add the validated URL
-                product_urls.add(result.url)
+                        # Exclude direct image links
+                        is_image = any(result.url.lower().endswith(ext) for ext in ['.jpg', '.jpeg', '.png', '.gif', '.svg', '.webp'])
+                        if is_image:
+                            continue
+
+                        # Add the validated URL
+                        product_urls.add(result.url)
+                break  # If the loop completes without errors, break out of the retry loop
+            except Exception as e:
+                print(f"An error occurred: {e}. Retrying in {retry_delay} seconds...")
+                await asyncio.sleep(retry_delay)
 
         print(f"\nFound {len(product_urls)} unique product URLs.")
 
