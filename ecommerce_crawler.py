@@ -32,6 +32,11 @@ CSS_SELECTOR_NAME = os.environ.get("CSS_SELECTOR_NAME", "h1.title, .product-titl
 CSS_SELECTOR_PRICE = os.environ.get("CSS_SELECTOR_PRICE", "div.product-price, .product-price-container")
 CSS_SELECTOR_DESCRIPTION = os.environ.get("CSS_SELECTOR_DESCRIPTION", "div.description, .product-description")
 CSS_SELECTOR_IMAGE_URL = os.environ.get("CSS_SELECTOR_IMAGE_URL", "div.main-image img, .product-gallery-preview img, .main-image-container img")
+CSS_SELECTOR_VENDOR_URL = os.environ.get("CSS_SELECTOR_VENDOR_URL", "")
+CSS_SELECTOR_VENDOR_NAME = os.environ.get("CSS_SELECTOR_VENDOR_NAME", "")
+CSS_SELECTOR_SKU = os.environ.get("CSS_SELECTOR_SKU", "")
+CSS_SELECTOR_SIZE = os.environ.get("CSS_SELECTOR_SIZE", "")
+CSS_SELECTOR_STOCK_STATUS = os.environ.get("CSS_SELECTOR_STOCK_STATUS", "")
 URLS_FILE = "product_urls.txt"
 
 __location__ = os.path.dirname(os.path.abspath(__file__))
@@ -47,8 +52,13 @@ from crawl4ai.deep_crawling.filters import FilterChain, URLPatternFilter
 
 # Pydantic model for product data extraction
 class Product(BaseModel):
+    vendor_url: Optional[str] = Field(None, description="The URL of the vendor")
+    vendor_name: Optional[str] = Field(None, description="The name of the vendor")
+    sku: str = Field(..., description="The SKU of the product")
     name: str = Field(..., description="The name of the product")
-    price: float = Field(..., description="The price of the product")
+    price: str = Field(..., description="The price of the product")
+    size: Optional[str] = Field(None, description="The size of the product")
+    stock_status: Optional[str] = Field(None, description="The stock status of the product")
     description: Optional[str] = Field(None, description="The description of the product")
     image_url: Optional[str] = Field(None, description="The URL of the product image")
 
@@ -168,8 +178,13 @@ async def extract_product_data():
     extraction_schema = {
         "baseSelector": CSS_SELECTOR_BASE,
         "fields": [
+            {"name": "vendor_url", "selector": CSS_SELECTOR_VENDOR_URL, "type": "attribute", "attribute": "href"},
+            {"name": "vendor_name", "selector": CSS_SELECTOR_VENDOR_NAME, "type": "text"},
+            {"name": "sku", "selector": CSS_SELECTOR_SKU, "type": "text"},
             {"name": "name", "selector": CSS_SELECTOR_NAME, "type": "text"},
             {"name": "price", "selector": CSS_SELECTOR_PRICE, "type": "text"},
+            {"name": "size", "selector": CSS_SELECTOR_SIZE, "type": "text"},
+            {"name": "stock_status", "selector": CSS_SELECTOR_STOCK_STATUS, "type": "text"},
             {"name": "description", "selector": CSS_SELECTOR_DESCRIPTION, "type": "text"},
             {"name": "image_url", "selector": CSS_SELECTOR_IMAGE_URL, "type": "attribute", "attribute": "src"}
         ]
@@ -221,10 +236,6 @@ async def extract_product_data():
                         continue
                     # Validate the extracted data against the Pydantic model
                     product_data = product_data_list[0]
-                    # The price is extracted as a string like "3.57 USD", so we need to parse it
-                    if 'price' in product_data and isinstance(product_data['price'], str):
-                        product_data['price'] = float(product_data['price'].replace('USD', '').strip())
-
                     validated_product = Product(**product_data)
                     product_data_validated = validated_product.model_dump()
                     product_data_validated['url'] = url
@@ -233,9 +244,9 @@ async def extract_product_data():
                     if len(products_batch) >= batch_size:
                         client = get_supabase_client()
                         # De-duplicate the batch before upserting
-                        unique_products = {p['name']: p for p in products_batch}.values()
+                        unique_products = {p['sku']: p for p in products_batch}.values()
                         # Upsert instead of insert
-                        data, count = client.table(PRODUCTS_TABLE_NAME).upsert(list(unique_products), on_conflict='name').execute()
+                        data, count = client.table(PRODUCTS_TABLE_NAME).upsert(list(unique_products), on_conflict='sku').execute()
                         success_count += len(unique_products)
                         print(f"Upserted batch of {len(unique_products)} products.")
                         products_batch = []
@@ -252,9 +263,9 @@ async def extract_product_data():
         if products_batch:
             client = get_supabase_client()
             # De-duplicate the batch before upserting
-            unique_products = {p['name']: p for p in products_batch}.values()
+            unique_products = {p['sku']: p for p in products_batch}.values()
             # Upsert instead of insert
-            data, count = client.table(PRODUCTS_TABLE_NAME).upsert(list(unique_products), on_conflict='name').execute()
+            data, count = client.table(PRODUCTS_TABLE_NAME).upsert(list(unique_products), on_conflict='sku').execute()
             success_count += len(unique_products)
             print(f"Upserted final batch of {len(unique_products)} products.")
 
